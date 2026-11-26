@@ -1,0 +1,12 @@
+{
+  "version": "v1",
+  "hooks": [{
+    "name": "Enforce exact dependency pins",
+    "trigger": "PreToolUse",
+    "matcher": "fs_write",
+    "action": {
+      "type": "command",
+      "command": ".kiro/hooks/check-dependency-pins.sh"
+    }
+  }]
+}

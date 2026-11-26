@@ -1,0 +1,207 @@
+asyncapi: 3.0.0
+info:
+  title: integration.risk.scored
+  version: 1.0.0
+  description: >-
+    Integration risk score for a firmware change, produced by the
+    integration-intelligence context (Risk_Predictor) and consumed by the
+    release-assurance context to maintain its Release_Projection.
+    Domain-prefixed topic per ADR-001. This file owns its own payload schema;
+    no risk-score schema is shared with configuration.risk.scored or
+    release.risk.scored. The envelope is defined file-locally and must stay
+    identical to the shared envelope in contracts/asyncapi/common/envelope.yaml
+    (checked in CI). W3C trace context travels in Kafka record headers, not in
+    the body.
+  x-phase: 1
+  x-owner-context: integration-intelligence
+defaultContentType: application/json
+servers:
+  kafka:
+    host: kafka:9092
+    protocol: kafka
+    description: Apache Kafka 3.x event backbone (local dev address).
+channels:
+  integrationRiskScored:
+    address: integration.risk.scored
+    description: >-
+      One message per computed integration risk score. Partition key is
+      "{tenantId}:{canonicalId}" where canonicalId is the Canonical_ID of the
+      changed software artifact, so events for one entity stay ordered.
+    messages:
+      IntegrationRiskScored:
+        $ref: '#/components/messages/IntegrationRiskScored'
+    bindings:
+      kafka:
+        topic: integration.risk.scored
+        partitions: 12
+        replicas: 1
+operations:
+  publishIntegrationRiskScored:
+    action: send
+    summary: integration-intelligence publishes a risk score through its transactional outbox.
+    channel:
+      $ref: '#/channels/integrationRiskScored'
+    messages:
+      - $ref: '#/channels/integrationRiskScored/messages/IntegrationRiskScored'
+    x-owner-context: integration-intelligence
+  consumeIntegrationRiskScored:
+    action: receive
+    summary: release-assurance projects the score into its Release_Projection as an Evidence_Item.
+    channel:
+      $ref: '#/channels/integrationRiskScored'
+    messages:
+      - $ref: '#/channels/integrationRiskScored/messages/IntegrationRiskScored'
+    bindings:
+      kafka:
+        groupId:
+          type: string
+          enum:
+            - release-assurance-evidence
+    x-owner-context: release-assurance
+    x-dead-letter-topic: dlt.release-assurance-evidence
+components:
+  messages:
+    IntegrationRiskScored:
+      name: IntegrationRiskScored
+      title: Integration risk scored
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/KafkaHeaders'
+      payload:
+        $ref: '#/components/schemas/IntegrationRiskScoredEnvelope'
+      bindings:
+        kafka:
+          key:
+            type: string
+            description: '"{tenantId}:{canonicalId}" (canonicalId = artifactCanonicalId)'
+  schemas:
+    KafkaHeaders:
+      type: object
+      required:
+        - traceparent
+      properties:
+        traceparent:
+          type: string
+          description: W3C trace context.
+        tracestate:
+          type: string
+          description: W3C trace context vendor state.
+    IntegrationRiskScoredEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+        - eventId
+        - eventType
+        - version
+        - tenantId
+        - occurredAt
+        - payload
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        eventType:
+          type: string
+          const: integration.risk.scored
+        version:
+          type: integer
+          const: 1
+        tenantId:
+          type: string
+          format: uuid
+        occurredAt:
+          type: string
+          format: date-time
+        payload:
+          $ref: '#/components/schemas/IntegrationRiskScoredPayload'
+    IntegrationRiskScoredPayload:
+      type: object
+      additionalProperties: false
+      required:
+        - firmwareChangeId
+        - artifactCanonicalId
+        - score
+        - confidence
+        - estimate
+        - requiresHumanReview
+        - modelVersion
+        - factors
+        - citations
+      properties:
+        firmwareChangeId:
+          type: string
+          format: uuid
+          description: Identifier of the firmware change that was scored.
+        artifactCanonicalId:
+          type: string
+          format: uuid
+          description: Canonical_ID of the changed Canonical_Software_Artifact.
+        score:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: Integration risk score, higher means riskier.
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Lowered when a factor is unavailable.
+        estimate:
+          type: boolean
+          const: true
+          description: Always a model-generated estimate.
+        requiresHumanReview:
+          type: boolean
+          const: true
+        modelVersion:
+          type: string
+          minLength: 1
+        factors:
+          type: array
+          items:
+            $ref: '#/components/schemas/IntegrationRiskFactor'
+        citations:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/IntegrationRiskCitation'
+    IntegrationRiskFactor:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - weight
+        - available
+      properties:
+        name:
+          type: string
+          minLength: 1
+        weight:
+          type: number
+          minimum: 0
+        contribution:
+          type: number
+          minimum: 0
+          description: Non-negative contribution to the score; absent when unavailable.
+        available:
+          type: boolean
+        supportingIds:
+          type: array
+          items:
+            type: string
+          description: Graph entity or Evidence_Item identifiers supporting the factor.
+    IntegrationRiskCitation:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - id
+      properties:
+        type:
+          type: string
+          enum:
+            - graph-entity
+            - evidence-item
+        id:
+          type: string
+          minLength: 1

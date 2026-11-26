@@ -1,0 +1,12 @@
+{
+  "version": "v1",
+  "hooks": [{
+    "name": "Run tests on save",
+    "trigger": "PostFileSave",
+    "matcher": "\\.(java|py|ts|tsx)$",
+    "action": {
+      "type": "command",
+      "command": ".kiro/hooks/run-affected-tests.sh"
+    }
+  }]
+}

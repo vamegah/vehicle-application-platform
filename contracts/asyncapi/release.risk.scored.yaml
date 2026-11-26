@@ -1,0 +1,188 @@
+asyncapi: 3.0.0
+info:
+  title: release.risk.scored
+  version: 1.0.0
+  description: >-
+    Release risk score for a Release_Candidate, produced by the
+    release-assurance context (Release_Risk_Scorer) from its own
+    Release_Projection. Domain-prefixed topic per ADR-001. This file owns its
+    own payload schema; no risk-score schema is shared with
+    integration.risk.scored or configuration.risk.scored. release-assurance
+    MUST NOT consume this topic (no self-loop), so this file declares no
+    receive operation. No Phase 1 context consumes it; downstream consumers
+    are added by their own phase. The envelope is defined file-locally and must
+    stay identical to the shared envelope in contracts/asyncapi/common/envelope.yaml
+    (checked in CI). W3C trace context travels in Kafka record headers, not in
+    the body.
+  x-phase: 1
+  x-owner-context: release-assurance
+defaultContentType: application/json
+servers:
+  kafka:
+    host: kafka:9092
+    protocol: kafka
+    description: Apache Kafka 3.x event backbone (local dev address).
+channels:
+  releaseRiskScored:
+    address: release.risk.scored
+    description: >-
+      One message per recomputed release risk score. Partition key is
+      "{tenantId}:{canonicalId}" where canonicalId is the Canonical_ID of the
+      candidate's software artifact.
+    messages:
+      ReleaseRiskScored:
+        $ref: '#/components/messages/ReleaseRiskScored'
+    bindings:
+      kafka:
+        topic: release.risk.scored
+        partitions: 12
+        replicas: 1
+operations:
+  publishReleaseRiskScored:
+    action: send
+    summary: release-assurance publishes a release risk score through its transactional outbox.
+    channel:
+      $ref: '#/channels/releaseRiskScored'
+    messages:
+      - $ref: '#/channels/releaseRiskScored/messages/ReleaseRiskScored'
+    x-owner-context: release-assurance
+components:
+  messages:
+    ReleaseRiskScored:
+      name: ReleaseRiskScored
+      title: Release risk scored
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/KafkaHeaders'
+      payload:
+        $ref: '#/components/schemas/ReleaseRiskScoredEnvelope'
+      bindings:
+        kafka:
+          key:
+            type: string
+            description: '"{tenantId}:{canonicalId}" (canonicalId = softwareArtifactCanonicalId)'
+  schemas:
+    KafkaHeaders:
+      type: object
+      required:
+        - traceparent
+      properties:
+        traceparent:
+          type: string
+          description: W3C trace context.
+        tracestate:
+          type: string
+          description: W3C trace context vendor state.
+    ReleaseRiskScoredEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+        - eventId
+        - eventType
+        - version
+        - tenantId
+        - occurredAt
+        - payload
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        eventType:
+          type: string
+          const: release.risk.scored
+        version:
+          type: integer
+          const: 1
+        tenantId:
+          type: string
+          format: uuid
+        occurredAt:
+          type: string
+          format: date-time
+        payload:
+          $ref: '#/components/schemas/ReleaseRiskScoredPayload'
+    ReleaseRiskScoredPayload:
+      type: object
+      additionalProperties: false
+      required:
+        - releaseCandidateId
+        - softwareArtifactCanonicalId
+        - score
+        - policyVersion
+        - scoringVersion
+        - decisionSupportOnly
+        - inputs
+        - citations
+      properties:
+        releaseCandidateId:
+          type: string
+          format: uuid
+        softwareArtifactCanonicalId:
+          type: string
+          format: uuid
+        score:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: Release risk score, higher means riskier. Deterministic function of the Release_Projection.
+        policyVersion:
+          type: string
+          minLength: 1
+        scoringVersion:
+          type: string
+          minLength: 1
+        decisionSupportOnly:
+          type: boolean
+          const: true
+          description: Output is decision support and never a certification.
+        inputs:
+          $ref: '#/components/schemas/ReleaseRiskInputs'
+        citations:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ReleaseRiskCitation'
+    ReleaseRiskInputs:
+      type: object
+      additionalProperties: false
+      required:
+        - evidenceScoreId
+        - evidenceSufficiencyScore
+        - openGapIds
+      properties:
+        evidenceScoreId:
+          type: string
+          format: uuid
+        evidenceSufficiencyScore:
+          type: number
+          minimum: 0
+          maximum: 100
+        openGapIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+        integrationRiskEvidenceItemId:
+          type: string
+          format: uuid
+          description: Evidence_Item holding the consumed integration.risk.scored event; absent when unavailable.
+        configurationRiskEvidenceItemId:
+          type: string
+          format: uuid
+          description: Evidence_Item holding the consumed configuration.risk.scored event; absent when unavailable.
+    ReleaseRiskCitation:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - id
+      properties:
+        type:
+          type: string
+          enum:
+            - evidence-item
+            - evidence-gap
+            - evidence-score
+        id:
+          type: string
+          minLength: 1

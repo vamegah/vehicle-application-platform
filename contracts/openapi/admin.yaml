@@ -1,0 +1,313 @@
+openapi: 3.1.0
+info:
+  title: AutoReliance AI Admin (operator) API
+  version: 1.0.0
+  description: |
+    Operator-facing routes for the AutoReliance AI platform. Phase 1 contains only the layout read-back
+    (ADR-021, ADR-023). All fictional tenants in examples are illustrative.
+
+    Admin routes are versioned immediately after the /admin/ prefix: /admin/v1/<resource>/{tenantId}.
+    Tenant routes remain /api/v1/<context>/. The two namespaces are intentionally distinct: tenant routes are
+    customer-facing and gated by tenant principal; admin routes are operator-facing and gated by
+    platform-operator role. Versioning either namespace does not affect the other.
+
+    Phase 2, NOT implemented in Phase 1 and deliberately not defined as an operation in this file:
+    POST /admin/v1/layout/{tenantId}/refresh (explicit operator-triggered re-read of one tenant's layout
+    from Vault, ADR-022). It is not a TTL and not a timer.
+
+    Envelope: because the operator is not tenant-scoped, meta.tenantId is null and
+    meta.targetTenantId carries the target tenant. The audit event of every call carries the target tenant
+    as its envelope tenantId and the operator in the separate operatorPrincipal field.
+
+    Data paths are Kafka-only. Admin paths under /admin/* are the sole exception that may use synchronous
+    HTTP between services, for read-only diagnostics only. Any admin-path HTTP failure returns 503 to the
+    caller, with no fallback and no cached value.
+servers:
+  - url: https://gateway.autoreliance.example
+    description: API gateway (external, operator principals only)
+tags:
+  - name: layout
+    description: Storage layout read-back
+security:
+  - platformOperator: []
+paths:
+  /admin/v1/layout/{tenantId}:
+    get:
+      operationId: getTenantLayoutReadback
+      summary: Aggregate layout read-back for one tenant
+      description: |
+        Owned by legacy-integration and routed by the gateway. Read-only. Reports the Vault value (with
+        KV v2 lastModified and version) and every registered process that caches the layout, each with its
+        loaded value, loaded Vault version, and loadedAt. Never returns a credential or key ARN.
+
+        Fails closed: if any registered cache endpoint is unreachable or does not answer within 2 seconds,
+        or Vault is unreachable, the response is 503 problem+json naming the unreachable process, and
+        consistent:true is never reported on partial data.
+      tags: [layout]
+      x-audit-event-required: true
+      x-owner: legacy-integration
+      security:
+        - platformOperator: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: Read-back of the layout across Vault and every registered cache.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LayoutReadbackEnvelope'
+              examples:
+                divergent:
+                  summary: Illustrative divergent case (tenant ID is fictional)
+                  value:
+                    data:
+                      tenantId: 3f2b8c1e-5a47-4d0e-9c6b-0a1d2e3f4a5b
+                      vault:
+                        value: dedicated
+                        lastModified: '2026-11-25T09:00:00Z'
+                        version: 7
+                      caches:
+                        - process: data-readiness/storage-adapter
+                          value: dedicated
+                          vaultVersion: 7
+                          loadedAt: '2026-11-25T10:00:00Z'
+                        - process: legacy-integration/storage-adapter
+                          value: shared
+                          vaultVersion: 6
+                          loadedAt: '2026-11-24T08:00:00Z'
+                      consistent: false
+                      recommendation: restart legacy-integration/storage-adapter to load layout v7
+                    meta:
+                      traceId: 4bf92f3577b34da6a3ce929d0e0e4736
+                      tenantId: null
+                      targetTenantId: 3f2b8c1e-5a47-4d0e-9c6b-0a1d2e3f4a5b
+        '400':
+          $ref: '#/components/responses/Problem400'
+        '401':
+          $ref: '#/components/responses/Problem401'
+        '403':
+          $ref: '#/components/responses/Problem403'
+        '404':
+          $ref: '#/components/responses/Problem404'
+        '503':
+          $ref: '#/components/responses/Problem503'
+        '504':
+          $ref: '#/components/responses/Problem504'
+  /admin/v1/layout-cache/{tenantId}:
+    get:
+      operationId: getLayoutCache
+      summary: Layout cached by one process (internal)
+      description: |
+        Internal only. Served by every process that caches the layout (legacy-integration/storage-adapter and
+        data-readiness/storage-adapter in Phase 1; for data-readiness this is the process that runs the Kafka
+        consumers and holds the adapter). Served on the internal management port admin-cache (8081/TCP), not on
+        the primary listener (x-internal-port). NetworkPolicy restricts that port to the aggregate caller
+        (legacy-integration) and the operator gateway namespace; the role gate answers who, NetworkPolicy
+        answers from where, and both are required. NOT routed by the gateway to external callers and not
+        included in the gateway aggregate (x-internal-only). Called by the aggregate read-back with the
+        signed operator principal and trace context. Read-only, carries no document or ingest payload, and
+        never performs a Vault read or a storage call. Returns 503 on its own failure, never a cached value.
+      tags: [layout]
+      x-audit-event-required: true
+      x-internal-only: true
+      x-internal-port:
+        name: admin-cache
+        port: 8081
+        protocol: TCP
+      x-served-by: [legacy-integration, data-readiness]
+      security:
+        - platformOperator: []
+      parameters:
+        - $ref: '#/components/parameters/TenantId'
+      responses:
+        '200':
+          description: The layout this process loaded at adapter initialization.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LayoutCacheEnvelope'
+        '400':
+          $ref: '#/components/responses/Problem400'
+        '401':
+          $ref: '#/components/responses/Problem401'
+        '403':
+          $ref: '#/components/responses/Problem403'
+        '404':
+          $ref: '#/components/responses/Problem404'
+        '503':
+          $ref: '#/components/responses/Problem503'
+components:
+  securitySchemes:
+    platformOperator:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Internal_Principal of the platform-operator role. Not tenant-scoped and carries no tenantId.
+  parameters:
+    TenantId:
+      name: tenantId
+      in: path
+      required: true
+      description: Target tenant (lowercase UUID). Never treated as the caller's tenant.
+      schema:
+        $ref: '#/components/schemas/TenantId'
+  schemas:
+    TenantId:
+      type: string
+      format: uuid
+      pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    LayoutName:
+      type: string
+      enum: [shared, dedicated]
+    LayoutReason:
+      type: [string, 'null']
+      enum: [physical-isolation, cost-allocation, retention-profile, null]
+    AdminMeta:
+      type: object
+      required: [traceId, tenantId, targetTenantId]
+      properties:
+        traceId:
+          type: string
+        tenantId:
+          type: 'null'
+          description: Always null on admin routes because the operator is not tenant-scoped.
+        targetTenantId:
+          $ref: '#/components/schemas/TenantId'
+    VaultLayout:
+      type: object
+      required: [value, lastModified, version]
+      properties:
+        value:
+          $ref: '#/components/schemas/LayoutName'
+        reason:
+          $ref: '#/components/schemas/LayoutReason'
+        approvalRef:
+          type: [string, 'null']
+        approvedAt:
+          type: [string, 'null']
+          format: date-time
+        lastModified:
+          type: [string, 'null']
+          format: date-time
+          description: KV v2 metadata updated_time. Null when the tenant has no layout entry (default shared).
+        version:
+          type: [integer, 'null']
+          description: KV v2 metadata current_version. Null when the tenant has no layout entry.
+    CacheEntry:
+      type: object
+      required: [process, value, vaultVersion, loadedAt]
+      properties:
+        process:
+          type: string
+          description: Explicit process identifier from the layout cache registry.
+          examples: ['legacy-integration/storage-adapter', 'data-readiness/storage-adapter']
+        value:
+          $ref: '#/components/schemas/LayoutName'
+        reason:
+          $ref: '#/components/schemas/LayoutReason'
+        approvalRef:
+          type: [string, 'null']
+        approvedAt:
+          type: [string, 'null']
+          format: date-time
+        vaultVersion:
+          type: [integer, 'null']
+          description: Vault KV v2 version of the layout entry this process loaded. Null for the default shared layout.
+        loadedAt:
+          type: string
+          format: date-time
+    LayoutReadback:
+      type: object
+      required: [tenantId, vault, caches, consistent, recommendation]
+      properties:
+        tenantId:
+          $ref: '#/components/schemas/TenantId'
+        vault:
+          $ref: '#/components/schemas/VaultLayout'
+        caches:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/CacheEntry'
+        consistent:
+          type: boolean
+        recommendation:
+          type: string
+          description: Names each process that needs a restart and the layout version to load, or states that none is needed.
+    LayoutReadbackEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/LayoutReadback'
+        meta:
+          $ref: '#/components/schemas/AdminMeta'
+    LayoutCacheEnvelope:
+      type: object
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/CacheEntry'
+        meta:
+          $ref: '#/components/schemas/AdminMeta'
+    Problem:
+      type: object
+      required: [type, title, status, detail, instance, correlationId, traceId]
+      properties:
+        type:
+          type: string
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+        correlationId:
+          type: string
+        traceId:
+          type: string
+        unreachableProcesses:
+          type: array
+          description: Present on 503. Processes (or vault) that could not be read.
+          items:
+            type: string
+  responses:
+    Problem400:
+      description: Malformed target tenant ID.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Problem401:
+      description: Missing or invalid token.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Problem403:
+      description: Principal lacks the platform-operator role, or is tenant-scoped. An audit event is recorded.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Problem404:
+      description: Unknown tenant. Identical body to a missing entity.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Problem503:
+      description: Any admin-path HTTP failure, including a registered cache endpoint or Vault that is unreachable, times out (2 s), or returns an error or malformed body. The detail names the process. No fallback and no cached value.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Problem504:
+      description: Downstream timeout at the gateway.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'

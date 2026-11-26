@@ -1,0 +1,243 @@
+asyncapi: 3.0.0
+info:
+  title: erp.purchaseorder.updated
+  version: 1.0.0
+  description: >-
+    A purchase order changed in the ERP source, produced by the legacy-integration
+    context (Connector_Framework) after the Anti_Corruption_Layer has translated
+    the legacy record, and consumed by the data-readiness context (ADR-011). This
+    file owns its own payload schema; no ERP or MES payload schema is shared with
+    another topic. Anti_Corruption_Layer note: legacy field names and codes never
+    appear here. Every payload field is a stable contract field that the ACL fills
+    from the legacy record, so a change in the legacy model changes the ACL
+    mapping and not this contract. All values are fictional in Phase 1 seed data.
+    There is no synchronous HTTP call in either direction between the two
+    contexts. Source key strategy (ADR-016). The envelope carries sourceSystem,
+    naturalKey, contentHash, extractedAt, and an optional sourceRecordVersion (the
+    source-ingestion envelope in api-standards.md). naturalKey is built by the
+    connector from named source columns (composition under the naturalKey
+    property) and is never supplied by the source. contentHash is the SHA-256
+    (lowercase hex) of the RFC 8785 canonical JSON form of the ACL-mapped payload
+    object. extractedAt is set by the connector. The consumer idempotency key is
+    eventId, a deterministic UUIDv5 of (tenantId, eventType, naturalKey,
+    contentHash, extractedAt); the consumer inbox keyed by (eventId, tenantId)
+    collapses a redelivery into no additional effect. The connector keeps the last
+    published contentHash per naturalKey and publishes nothing for an unchanged
+    record. Ordering of versions of one record: use sourceRecordVersion when the
+    event and the stored record both carry it, otherwise compare extractedAt;
+    equal extractedAt is broken by the larger contentHash (lowercase hex, byte
+    order), so every delivery order converges to one state. An event whose
+    contentHash equals the stored contentHash is a no-op. A connector sets
+    sourceRecordVersion consistently per (sourceSystem, topic): always or never.
+    The envelope is defined file-locally and must equal the base envelope in
+    contracts/asyncapi/common/envelope.yaml plus the source-ingestion extension
+    (checked in CI). W3C trace context travels in Kafka record headers, not in the
+    body.
+  x-phase: 1
+  x-owner-context: legacy-integration
+defaultContentType: application/json
+servers:
+  kafka:
+    host: kafka:9092
+    protocol: kafka
+    description: Apache Kafka 3.x event backbone (local dev address).
+channels:
+  erpPurchaseorderUpdated:
+    address: erp.purchaseorder.updated
+    description: >-
+      One message per purchase order version. Partition key is
+      "{tenantId}:{naturalKey}": the tenant and the connector-built natural key.
+      All versions of one source record in one tenant stay in one partition and
+      ordered. The raw natural key is used, not a hash, so the key can be
+      inspected and no second hashing step can diverge between producers.
+    messages:
+      ErpPurchaseorderUpdated:
+        $ref: '#/components/messages/ErpPurchaseorderUpdated'
+    bindings:
+      kafka:
+        topic: erp.purchaseorder.updated
+        partitions: 12
+        replicas: 1
+operations:
+  publishErpPurchaseorderUpdated:
+    action: send
+    summary: legacy-integration publishes an ACL-translated purchase order change through its transactional outbox.
+    channel:
+      $ref: '#/channels/erpPurchaseorderUpdated'
+    messages:
+      - $ref: '#/channels/erpPurchaseorderUpdated/messages/ErpPurchaseorderUpdated'
+    x-owner-context: legacy-integration
+  consumeErpPurchaseorderUpdated:
+    action: receive
+    summary: data-readiness normalizes the order, resolves component instances, and writes to the canonical layer.
+    channel:
+      $ref: '#/channels/erpPurchaseorderUpdated'
+    messages:
+      - $ref: '#/channels/erpPurchaseorderUpdated/messages/ErpPurchaseorderUpdated'
+    bindings:
+      kafka:
+        groupId:
+          type: string
+          enum:
+            - data-readiness-erp-purchaseorder
+    x-owner-context: data-readiness
+    x-dead-letter-topic: dlt.data-readiness-erp-purchaseorder
+components:
+  messages:
+    ErpPurchaseorderUpdated:
+      name: ErpPurchaseorderUpdated
+      title: ERP purchase order updated
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/KafkaHeaders'
+      payload:
+        $ref: '#/components/schemas/ErpPurchaseorderUpdatedEnvelope'
+      bindings:
+        kafka:
+          key:
+            type: string
+            description: '"{tenantId}:{naturalKey}"'
+  schemas:
+    KafkaHeaders:
+      type: object
+      required:
+        - traceparent
+      properties:
+        traceparent:
+          type: string
+          description: W3C trace context.
+        tracestate:
+          type: string
+          description: W3C trace context vendor state.
+    ErpPurchaseorderUpdatedEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+        - eventId
+        - eventType
+        - version
+        - tenantId
+        - occurredAt
+        - sourceSystem
+        - naturalKey
+        - contentHash
+        - extractedAt
+        - payload
+      properties:
+        eventId:
+          type: string
+          format: uuid
+          description: >-
+            Deterministic UUIDv5 derived from tenantId, eventType, naturalKey,
+            contentHash, and extractedAt. The consumer idempotency key.
+        eventType:
+          type: string
+          const: erp.purchaseorder.updated
+        version:
+          type: integer
+          const: 1
+        tenantId:
+          type: string
+          format: uuid
+        occurredAt:
+          type: string
+          format: date-time
+        sourceSystem:
+          type: string
+          minLength: 1
+          description: >-
+            Source-ingestion envelope field. The source system the record was
+            extracted from (fictional in Phase 1).
+        naturalKey:
+          type: string
+          minLength: 3
+          maxLength: 512
+          pattern: '^[^|]+(\|[^|]+){1,5}$'
+          description: >-
+            Built by the connector from named source columns, never supplied by the
+            source. Composition: <sourceSystem>|<PO_NO> (fictional ERP column mapped by
+            the Anti_Corruption_Layer). Segments are trimmed, case-preserved, and
+            percent-encoded for the characters | and %. An empty segment makes the ACL
+            reject the record.
+        contentHash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: >-
+            SHA-256 (lowercase hex) of the RFC 8785 canonical JSON form of the
+            ACL-mapped payload object, computed by the connector. A value equal
+            to the stored one means no-op.
+        extractedAt:
+          type: string
+          format: date-time
+          description: Set by the connector when it extracted the record.
+        sourceRecordVersion:
+          type: integer
+          minimum: 1
+          description: >-
+            Optional. Monotonic per source record when the source provides a
+            version. When present on the event and on the stored record it
+            decides ordering; otherwise (extractedAt, contentHash) decides.
+        payload:
+          $ref: '#/components/schemas/ErpPurchaseorderUpdatedPayload'
+    ErpPurchaseorderUpdatedPayload:
+      type: object
+      additionalProperties: false
+      required:
+        - purchaseOrderNumber
+        - supplierCode
+        - status
+        - lines
+        - updatedAt
+      properties:
+        purchaseOrderNumber:
+          type: string
+          minLength: 1
+          maxLength: 64
+        supplierCode:
+          type: string
+          minLength: 1
+          maxLength: 32
+        status:
+          type: string
+          enum:
+            - open
+            - confirmed
+            - partially-delivered
+            - delivered
+            - cancelled
+        lines:
+          type: array
+          minItems: 1
+          maxItems: 500
+          items:
+            $ref: '#/components/schemas/PurchaseOrderLine'
+        updatedAt:
+          type: string
+          format: date-time
+    PurchaseOrderLine:
+      type: object
+      additionalProperties: false
+      required:
+        - lineNumber
+        - partNumber
+        - quantityOrdered
+        - quantityDelivered
+      properties:
+        lineNumber:
+          type: integer
+          minimum: 1
+        partNumber:
+          type: string
+          minLength: 1
+          maxLength: 64
+        supplierBatch:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: Together with partNumber this resolves to a Canonical_Component_Instance.
+        quantityOrdered:
+          type: integer
+          minimum: 1
+        quantityDelivered:
+          type: integer
+          minimum: 0

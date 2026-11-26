@@ -1,0 +1,53 @@
+# Restricts ingress on the internal management port `admin-cache` (8081/TCP) of the processes that serve
+# GET /admin/v1/layout-cache/{tenantId}. NetworkPolicy is L3/L4 and cannot match HTTP paths, so the cache
+# routes live on their own port. Role gate answers who; NetworkPolicy answers from where. Both required.
+#
+# Only the admin-cache port is restricted by this policy. Selecting a pod isolates it for all ingress, so the
+# second rule re-admits every other port (1-8080 and 8082-65535) from any source, which keeps existing traffic
+# on those ports unchanged. A default-deny policy is not part of this change. The cluster CNI must enforce
+# NetworkPolicy for this to take effect. The base kustomization.yaml of this directory must list this file.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: admin-cache-ingress
+  namespace: autoreliance
+  labels:
+    app.kubernetes.io/part-of: data-platform
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/part-of: data-platform
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values:
+          - legacy-integration
+          - data-readiness-consumer
+  policyTypes:
+    - Ingress
+  ingress:
+    # Rule 1: the admin-cache port, from the two allowed sources only.
+    - ports:
+        - protocol: TCP
+          port: 8081 # admin-cache
+      from:
+        # (a) the aggregate caller: legacy-integration pods of the data-platform deployable
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: data-platform
+              app.kubernetes.io/component: legacy-integration
+        # (b) the operator gateway: api-gateway pods in the gateway namespace
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: autoreliance-gateway
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/component: api-gateway
+    # Rule 2: every other port keeps its existing traffic (no from: any source).
+    - ports:
+        - protocol: TCP
+          port: 1
+          endPort: 8080
+        - protocol: TCP
+          port: 8082
+          endPort: 65535

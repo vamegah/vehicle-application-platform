@@ -1,0 +1,243 @@
+asyncapi: 3.0.0
+info:
+  title: mes.quality.inspection.recorded
+  version: 1.0.0
+  description: >-
+    A quality inspection result was recorded in the MES source, produced by the
+    legacy-integration context (Connector_Framework) after the
+    Anti_Corruption_Layer has translated the legacy record, and consumed by the
+    data-readiness context (ADR-011). This file owns its own payload schema; no
+    ERP or MES payload schema is shared with another topic. NAMING EXCEPTION: the
+    topic name has four segments, while api-standards.md requires
+    <domain>.<entity>.<action>. The name is approved as written (ADR-011) and is
+    recorded in api-standards.md as a naming exception next to the dlt. names.
+    Anti_Corruption_Layer note: legacy field names and codes never appear here.
+    Every payload field is a stable contract field that the ACL fills from the
+    legacy record, so a change in the legacy model changes the ACL mapping and not
+    this contract. All values are fictional in Phase 1 seed data. There is no
+    synchronous HTTP call in either direction between the two contexts. Source key
+    strategy (ADR-016). The envelope carries sourceSystem, naturalKey,
+    contentHash, extractedAt, and an optional sourceRecordVersion (the
+    source-ingestion envelope in api-standards.md). naturalKey is built by the
+    connector from named source columns (composition under the naturalKey
+    property) and is never supplied by the source. contentHash is the SHA-256
+    (lowercase hex) of the RFC 8785 canonical JSON form of the ACL-mapped payload
+    object. extractedAt is set by the connector. The consumer idempotency key is
+    eventId, a deterministic UUIDv5 of (tenantId, eventType, naturalKey,
+    contentHash, extractedAt); the consumer inbox keyed by (eventId, tenantId)
+    collapses a redelivery into no additional effect. The connector keeps the last
+    published contentHash per naturalKey and publishes nothing for an unchanged
+    record. Ordering of versions of one record: use sourceRecordVersion when the
+    event and the stored record both carry it, otherwise compare extractedAt;
+    equal extractedAt is broken by the larger contentHash (lowercase hex, byte
+    order), so every delivery order converges to one state. An event whose
+    contentHash equals the stored contentHash is a no-op. A connector sets
+    sourceRecordVersion consistently per (sourceSystem, topic): always or never.
+    The envelope is defined file-locally and must equal the base envelope in
+    contracts/asyncapi/common/envelope.yaml plus the source-ingestion extension
+    (checked in CI). W3C trace context travels in Kafka record headers, not in the
+    body.
+  x-phase: 1
+  x-owner-context: legacy-integration
+  x-naming-exception: four-segment topic name approved in ADR-011
+defaultContentType: application/json
+servers:
+  kafka:
+    host: kafka:9092
+    protocol: kafka
+    description: Apache Kafka 3.x event backbone (local dev address).
+channels:
+  mesQualityInspectionRecorded:
+    address: mes.quality.inspection.recorded
+    description: >-
+      One message per inspection version. Partition key is
+      "{tenantId}:{naturalKey}": the tenant and the connector-built natural key.
+      All versions of one source record in one tenant stay in one partition and
+      ordered. The raw natural key is used, not a hash, so the key can be
+      inspected and no second hashing step can diverge between producers.
+    messages:
+      MesQualityInspectionRecorded:
+        $ref: '#/components/messages/MesQualityInspectionRecorded'
+    bindings:
+      kafka:
+        topic: mes.quality.inspection.recorded
+        partitions: 12
+        replicas: 1
+operations:
+  publishMesQualityInspectionRecorded:
+    action: send
+    summary: legacy-integration publishes an ACL-translated inspection result through its transactional outbox.
+    channel:
+      $ref: '#/channels/mesQualityInspectionRecorded'
+    messages:
+      - $ref: '#/channels/mesQualityInspectionRecorded/messages/MesQualityInspectionRecorded'
+    x-owner-context: legacy-integration
+  consumeMesQualityInspectionRecorded:
+    action: receive
+    summary: data-readiness normalizes the inspection, resolves the vehicle identity, and writes to the canonical layer.
+    channel:
+      $ref: '#/channels/mesQualityInspectionRecorded'
+    messages:
+      - $ref: '#/channels/mesQualityInspectionRecorded/messages/MesQualityInspectionRecorded'
+    bindings:
+      kafka:
+        groupId:
+          type: string
+          enum:
+            - data-readiness-mes-quality
+    x-owner-context: data-readiness
+    x-dead-letter-topic: dlt.data-readiness-mes-quality
+components:
+  messages:
+    MesQualityInspectionRecorded:
+      name: MesQualityInspectionRecorded
+      title: MES quality inspection recorded
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/KafkaHeaders'
+      payload:
+        $ref: '#/components/schemas/MesQualityInspectionRecordedEnvelope'
+      bindings:
+        kafka:
+          key:
+            type: string
+            description: '"{tenantId}:{naturalKey}"'
+  schemas:
+    KafkaHeaders:
+      type: object
+      required:
+        - traceparent
+      properties:
+        traceparent:
+          type: string
+          description: W3C trace context.
+        tracestate:
+          type: string
+          description: W3C trace context vendor state.
+    MesQualityInspectionRecordedEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+        - eventId
+        - eventType
+        - version
+        - tenantId
+        - occurredAt
+        - sourceSystem
+        - naturalKey
+        - contentHash
+        - extractedAt
+        - payload
+      properties:
+        eventId:
+          type: string
+          format: uuid
+          description: >-
+            Deterministic UUIDv5 derived from tenantId, eventType, naturalKey,
+            contentHash, and extractedAt. The consumer idempotency key.
+        eventType:
+          type: string
+          const: mes.quality.inspection.recorded
+        version:
+          type: integer
+          const: 1
+        tenantId:
+          type: string
+          format: uuid
+        occurredAt:
+          type: string
+          format: date-time
+        sourceSystem:
+          type: string
+          minLength: 1
+          description: >-
+            Source-ingestion envelope field. The source system the record was
+            extracted from (fictional in Phase 1).
+        naturalKey:
+          type: string
+          minLength: 3
+          maxLength: 512
+          pattern: '^[^|]+(\|[^|]+){1,5}$'
+          description: >-
+            Built by the connector from named source columns, never supplied by the
+            source. Composition: <sourceSystem>|<PLANT_CD>|<INSPECTION_ID> (fictional MES
+            columns mapped by the Anti_Corruption_Layer). Segments are trimmed,
+            case-preserved, and percent-encoded for the characters | and %. An empty
+            segment makes the ACL reject the record.
+        contentHash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: >-
+            SHA-256 (lowercase hex) of the RFC 8785 canonical JSON form of the
+            ACL-mapped payload object, computed by the connector. A value equal
+            to the stored one means no-op.
+        extractedAt:
+          type: string
+          format: date-time
+          description: Set by the connector when it extracted the record.
+        sourceRecordVersion:
+          type: integer
+          minimum: 1
+          description: >-
+            Optional. Monotonic per source record when the source provides a
+            version. When present on the event and on the stored record it
+            decides ordering; otherwise (extractedAt, contentHash) decides.
+        payload:
+          $ref: '#/components/schemas/MesQualityInspectionRecordedPayload'
+    MesQualityInspectionRecordedPayload:
+      type: object
+      additionalProperties: false
+      required:
+        - inspectionId
+        - workOrderNumber
+        - station
+        - result
+        - inspectedAt
+      properties:
+        inspectionId:
+          type: string
+          minLength: 1
+          maxLength: 64
+        workOrderNumber:
+          type: string
+          minLength: 1
+          maxLength: 64
+        vin:
+          type: string
+          pattern: '^[A-HJ-NPR-Z0-9]{17}$'
+          description: Source vehicle identifier (fictional), when the inspection is tied to one vehicle. data-readiness resolves it to a Canonical_Vehicle.
+        station:
+          type: string
+          minLength: 1
+          maxLength: 64
+        result:
+          type: string
+          enum:
+            - pass
+            - fail
+            - rework
+        defects:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/Defect'
+        inspectedAt:
+          type: string
+          format: date-time
+    Defect:
+      type: object
+      additionalProperties: false
+      required:
+        - defectCode
+        - severity
+      properties:
+        defectCode:
+          type: string
+          minLength: 1
+          maxLength: 32
+        severity:
+          type: string
+          enum:
+            - minor
+            - major
+            - critical

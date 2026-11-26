@@ -1,0 +1,215 @@
+asyncapi: 3.0.0
+info:
+  title: configuration.risk.scored
+  version: 1.0.0
+  description: >-
+    Configuration risk score derived from a configuration validation result,
+    produced by the configuration-assurance context (Configuration_Risk_Scorer)
+    and consumed by the release-assurance context. Domain-prefixed topic per
+    ADR-001. This file owns its own payload schema; no risk-score schema is
+    shared with integration.risk.scored or release.risk.scored. The envelope is
+    defined file-locally and must stay identical to the shared envelope in
+    contracts/asyncapi/common/envelope.yaml (checked in CI). W3C trace context
+    travels in Kafka record headers, not in the body.
+  x-phase: 1
+  x-owner-context: configuration-assurance
+defaultContentType: application/json
+servers:
+  kafka:
+    host: kafka:9092
+    protocol: kafka
+    description: Apache Kafka 3.x event backbone (local dev address).
+channels:
+  configurationRiskScored:
+    address: configuration.risk.scored
+    description: >-
+      One message per configuration validation that produced a risk score.
+      Partition key is "{tenantId}:{canonicalId}" where canonicalId is the
+      Canonical_ID of the Canonical_Configuration_Snapshot.
+    messages:
+      ConfigurationRiskScored:
+        $ref: '#/components/messages/ConfigurationRiskScored'
+    bindings:
+      kafka:
+        topic: configuration.risk.scored
+        partitions: 12
+        replicas: 1
+operations:
+  publishConfigurationRiskScored:
+    action: send
+    summary: configuration-assurance publishes a risk score through its transactional outbox.
+    channel:
+      $ref: '#/channels/configurationRiskScored'
+    messages:
+      - $ref: '#/channels/configurationRiskScored/messages/ConfigurationRiskScored'
+    x-owner-context: configuration-assurance
+  consumeConfigurationRiskScored:
+    action: receive
+    summary: release-assurance projects the score into its Release_Projection as an Evidence_Item.
+    channel:
+      $ref: '#/channels/configurationRiskScored'
+    messages:
+      - $ref: '#/channels/configurationRiskScored/messages/ConfigurationRiskScored'
+    bindings:
+      kafka:
+        groupId:
+          type: string
+          enum:
+            - release-assurance-evidence
+    x-owner-context: release-assurance
+    x-dead-letter-topic: dlt.release-assurance-evidence
+components:
+  messages:
+    ConfigurationRiskScored:
+      name: ConfigurationRiskScored
+      title: Configuration risk scored
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/KafkaHeaders'
+      payload:
+        $ref: '#/components/schemas/ConfigurationRiskScoredEnvelope'
+      bindings:
+        kafka:
+          key:
+            type: string
+            description: '"{tenantId}:{canonicalId}" (canonicalId = snapshotCanonicalId)'
+  schemas:
+    KafkaHeaders:
+      type: object
+      required:
+        - traceparent
+      properties:
+        traceparent:
+          type: string
+          description: W3C trace context.
+        tracestate:
+          type: string
+          description: W3C trace context vendor state.
+    ConfigurationRiskScoredEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+        - eventId
+        - eventType
+        - version
+        - tenantId
+        - occurredAt
+        - payload
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        eventType:
+          type: string
+          const: configuration.risk.scored
+        version:
+          type: integer
+          const: 1
+        tenantId:
+          type: string
+          format: uuid
+        occurredAt:
+          type: string
+          format: date-time
+        payload:
+          $ref: '#/components/schemas/ConfigurationRiskScoredPayload'
+    ConfigurationRiskScoredPayload:
+      type: object
+      additionalProperties: false
+      required:
+        - snapshotCanonicalId
+        - validationResultId
+        - ruleSetVersion
+        - score
+        - confidence
+        - estimate
+        - requiresHumanReview
+        - modelVersion
+        - ruleFactors
+        - citations
+      properties:
+        snapshotCanonicalId:
+          type: string
+          format: uuid
+          description: Canonical_ID of the validated Canonical_Configuration_Snapshot.
+        validationResultId:
+          type: string
+          format: uuid
+          description: Identifier of the configuration validation result the score derives from.
+        ruleSetVersion:
+          type: string
+          minLength: 1
+        score:
+          type: number
+          minimum: 0
+          maximum: 100
+          description: Configuration risk score, higher means riskier. Derived from rule results.
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Lowered when rules are not-evaluable.
+        estimate:
+          type: boolean
+          const: true
+        requiresHumanReview:
+          type: boolean
+          const: true
+        modelVersion:
+          type: string
+          minLength: 1
+          description: Version of the scoring function.
+        ruleFactors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConfigurationRuleFactor'
+        citations:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ConfigurationRiskCitation'
+    ConfigurationRuleFactor:
+      type: object
+      additionalProperties: false
+      required:
+        - ruleId
+        - ruleResultId
+        - status
+        - weight
+        - contribution
+      properties:
+        ruleId:
+          type: string
+          minLength: 1
+        ruleResultId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+            - pass
+            - fail
+            - not-evaluable
+        weight:
+          type: number
+          minimum: 0
+        contribution:
+          type: number
+          minimum: 0
+          description: Zero for pass; non-negative for fail and not-evaluable.
+    ConfigurationRiskCitation:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+        - id
+      properties:
+        type:
+          type: string
+          enum:
+            - rule-result
+            - graph-entity
+            - evidence-item
+        id:
+          type: string
+          minLength: 1

@@ -1,0 +1,290 @@
+asyncapi: 3.0.0
+info:
+  title: document.text.extracted
+  version: 1.0.0
+  description: >-
+    Text extracted from a discovered PDF document, produced by the
+    legacy-integration context (extraction worker pool, PDFBox) and consumed by
+    the data-readiness context (ADR-008, ADR-012, ADR-014). This topic is document
+    specific and is not generalised to ERP or MES records, which have their own
+    topics (ADR-011); its name matches <domain>.<entity>.<action> and is not a
+    naming exception. There is no synchronous HTTP call in either direction
+    between the two contexts. legacy-integration is the trigger: it discovers a
+    document, uploads the raw bytes to the S3-compatible object store through its
+    StorageProvider, commits a metadata row in PostgreSQL, extracts the text, and
+    publishes this event. PostgreSQL holds metadata only, never PDF bytes.
+    data-readiness normalizes the text, resolves entities, and writes to the
+    canonical layer. Envelope: the base envelope plus the source-ingestion
+    extension of api-standards.md (ADR-016, ADR-017): sourceSystem is the source
+    the document was discovered in; naturalKey is the connector-built document key
+    "<sourceSystem>|<SOURCE_DOC_KEY>" where SOURCE_DOC_KEY is the document's key
+    in the source (for example its repository path or document id), and
+    canonicalDocumentId is the UUIDv5 of (tenantId, sourceSystem, SOURCE_DOC_KEY);
+    contentHash is the SHA-256 of the PDF bytes and equals payload.contentSha256;
+    extractedAt is when the extraction worker finished. sourceRecordVersion is not
+    used on this topic: documents are content addressed, so a revised document has
+    a new contentHash and a new event. The envelope is defined file-locally and
+    must equal the base envelope in contracts/asyncapi/common/envelope.yaml plus
+    the source-ingestion extension (checked in CI). W3C trace context travels in
+    Kafka record headers, not in the body. Object storage layout (ADR-018, which
+    replaced the per-tenant bucket layout of ADR-014): the default is two shared
+    buckets per environment, autoreliance-raw-{env} for PDF bytes and
+    autoreliance-text-{env} for extracted text, with the tenant as the first key
+    segment. Raw and text are separate buckets because their reader sets differ,
+    so the store's bucket-level permissions keep data-readiness off the raw bytes.
+    objectStoreUri has the shared form
+    s3://autoreliance-raw-{env}/{tenantId}/raw/documents/{canonicalDocumentId}/{contentSha256}.pdf.
+    A tenant that has an approved dedicated-bucket exception uses the buckets
+    autoreliance-raw-{env}-{tenantId} and autoreliance-text-{env}-{tenantId} with
+    the same key. A raw URI never uses a text bucket or a text/ key, and a text
+    URI never uses a raw bucket or a raw/ key. The tenantId in the key prefix (and
+    in the bucket name under the dedicated layout) MUST equal the envelope
+    tenantId. A JSON Schema pattern cannot compare a URI segment with an envelope
+    field, so producers and consumers check this equality and the contract tests
+    and the data-readiness consumer tests assert it. data-readiness never reads
+    the PDF bytes. Text delivery: the extracted text is carried inline
+    in extractedText only when its UTF-8 size is at most 65536 bytes (64 KiB, the
+    contract ceiling; the configured threshold may be lower and never higher).
+    Above the threshold the text is stored in the text bucket as
+    s3://autoreliance-text-{env}/{tenantId}/text/documents/{canonicalDocumentId}/{textSha256}.txt
+    and the event carries textUri instead of extractedText. Exactly one of the two
+    is present. Both carry textSha256 and the UTF-8 byte size. The 64 KiB ceiling
+    keeps every message far below the Kafka message size limit (the topic sets
+    max.message.bytes to 262144). Idempotency key is (tenantId,
+    canonicalDocumentId, contentSha256). The producer derives eventId as a
+    deterministic UUIDv5 of that key, so a re-extraction of the same bytes under
+    the same canonicalDocumentId republishes the same eventId, and the consumer
+    inbox collapses it into no additional effect. A revised document (new bytes,
+    so a new contentSha256) is a new key and a new event. The data-readiness
+    document_extraction table keeps one row per revision, so re-delivery of an
+    older revision does not need ordering.
+  x-phase: 1
+  x-owner-context: legacy-integration
+  x-text-inline-max-bytes: 65536
+defaultContentType: application/json
+servers:
+  kafka:
+    host: kafka:9092
+    protocol: kafka
+    description: Apache Kafka 3.x event backbone (local dev address).
+channels:
+  documentTextExtracted:
+    address: document.text.extracted
+    description: >-
+      One message per successfully extracted document. Partition key is
+      "{tenantId}:{canonicalDocumentId}", so all events for one document in one
+      tenant stay ordered.
+    messages:
+      DocumentTextExtracted:
+        $ref: '#/components/messages/DocumentTextExtracted'
+    bindings:
+      kafka:
+        topic: document.text.extracted
+        partitions: 12
+        replicas: 1
+        topicConfiguration:
+          max.message.bytes: 262144
+        bindingVersion: 0.5.0
+operations:
+  publishDocumentTextExtracted:
+    action: send
+    summary: legacy-integration publishes extracted text through its transactional outbox.
+    description: >-
+      Published only after the object upload has succeeded and the metadata row,
+      the extraction result row, and the outbox row commit in one transaction
+      (upload-then-commit). A document that fails extraction (corrupt, encrypted,
+      over the size limit, or over the per-document timeout) publishes no event
+      here; it is recorded and routed to the dead-letter topic named below.
+    channel:
+      $ref: '#/channels/documentTextExtracted'
+    messages:
+      - $ref: '#/channels/documentTextExtracted/messages/DocumentTextExtracted'
+    x-owner-context: legacy-integration
+    x-dead-letter-topic: dlt.legacy-integration-extraction
+  consumeDocumentTextExtracted:
+    action: receive
+    summary: data-readiness normalizes the text, resolves entities, and writes to the canonical layer.
+    description: >-
+      When textUri is present, data-readiness reads the text through its own
+      read-only StorageProvider adapter, using its credential for the tenant's
+      text bucket only (that credential has no permission on the raw bucket), and
+      verifies textSha256.
+    channel:
+      $ref: '#/channels/documentTextExtracted'
+    messages:
+      - $ref: '#/channels/documentTextExtracted/messages/DocumentTextExtracted'
+    bindings:
+      kafka:
+        groupId:
+          type: string
+          enum:
+            - data-readiness-document
+    x-owner-context: data-readiness
+    x-dead-letter-topic: dlt.data-readiness-document
+components:
+  messages:
+    DocumentTextExtracted:
+      name: DocumentTextExtracted
+      title: Document text extracted
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/KafkaHeaders'
+      payload:
+        $ref: '#/components/schemas/DocumentTextExtractedEnvelope'
+      bindings:
+        kafka:
+          key:
+            type: string
+            description: '"{tenantId}:{canonicalDocumentId}"'
+  schemas:
+    KafkaHeaders:
+      type: object
+      required:
+        - traceparent
+      properties:
+        traceparent:
+          type: string
+          description: W3C trace context.
+        tracestate:
+          type: string
+          description: W3C trace context vendor state.
+    DocumentTextExtractedEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+        - eventId
+        - eventType
+        - version
+        - tenantId
+        - occurredAt
+        - sourceSystem
+        - naturalKey
+        - contentHash
+        - extractedAt
+        - payload
+      properties:
+        eventId:
+          type: string
+          format: uuid
+          description: >-
+            Deterministic UUIDv5 derived from tenantId, canonicalDocumentId, and
+            contentSha256 (the idempotency key).
+        eventType:
+          type: string
+          const: document.text.extracted
+        version:
+          type: integer
+          const: 1
+        tenantId:
+          type: string
+          format: uuid
+        occurredAt:
+          type: string
+          format: date-time
+        sourceSystem:
+          type: string
+          minLength: 1
+          description: Source-ingestion envelope field. The source system the document was discovered in.
+        naturalKey:
+          type: string
+          minLength: 3
+          maxLength: 512
+          pattern: '^[^|]+\|[^|]+$'
+          description: >-
+            Built by the connector, never supplied by the source:
+            "<sourceSystem>|<SOURCE_DOC_KEY>". Segments are trimmed,
+            case-preserved, and percent-encoded for the characters | and %.
+        contentHash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: SHA-256 (lowercase hex) of the PDF bytes. Equal to payload.contentSha256.
+        extractedAt:
+          type: string
+          format: date-time
+          description: Set by the extraction worker when extraction finished.
+        payload:
+          $ref: '#/components/schemas/DocumentTextExtractedPayload'
+    DocumentTextExtractedPayload:
+      type: object
+      additionalProperties: false
+      required:
+        - canonicalDocumentId
+        - objectStoreUri
+        - contentSha256
+        - mediaType
+        - sizeBytes
+        - pageCount
+        - textSha256
+        - textSizeBytes
+        - extractorVersion
+      oneOf:
+        - required:
+            - extractedText
+        - required:
+            - textUri
+      properties:
+        canonicalDocumentId:
+          type: string
+          format: uuid
+          description: Canonical_ID of the source document (the documentId), assigned by legacy-integration at discovery.
+        objectStoreUri:
+          type: string
+          minLength: 1
+          pattern: '^s3://autoreliance-raw-[a-z0-9]{2,8}(-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/raw/documents/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{64}\.pdf$'
+          description: >-
+            Location of the raw PDF. Shared layout (default):
+            s3://autoreliance-raw-{env}/{tenantId}/raw/documents/{canonicalDocumentId}/{contentSha256}.pdf.
+            Dedicated exception layout: the bucket is
+            autoreliance-raw-{env}-{tenantId} and the key is unchanged. The bucket
+            must be a raw bucket and the key must have the {tenantId}/raw/ form.
+            The tenantId in the key (and in the bucket name under the dedicated
+            layout) must equal the envelope tenantId, which is checked by the
+            producer and the consumer, not by this pattern. data-readiness treats
+            the value as an identifier and does not read the PDF.
+        contentSha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: SHA-256 of the raw PDF bytes, part of the idempotency key.
+        mediaType:
+          type: string
+          const: application/pdf
+        sizeBytes:
+          type: integer
+          minimum: 1
+          description: Size of the PDF in bytes.
+        pageCount:
+          type: integer
+          minimum: 0
+        extractedText:
+          type: string
+          maxLength: 65536
+          description: >-
+            Inline extracted text. Present only when textSizeBytes is at most
+            65536 (and at most the configured inline threshold). maxLength bounds
+            characters; the byte bound is enforced through textSizeBytes by the
+            producer and checked by the consumer.
+        textUri:
+          type: string
+          minLength: 1
+          pattern: '^s3://autoreliance-text-[a-z0-9]{2,8}(-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/text/documents/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{64}\.txt$'
+          description: >-
+            Location of the extracted text. Shared layout (default):
+            s3://autoreliance-text-{env}/{tenantId}/text/documents/{canonicalDocumentId}/{textSha256}.txt.
+            Dedicated exception layout: the bucket is
+            autoreliance-text-{env}-{tenantId} and the key is unchanged. The
+            bucket must be a text bucket and the key must have the {tenantId}/text/
+            form. The tenant equality with the envelope tenantId is checked by the
+            producer and the consumer. Present when the text exceeds the inline
+            threshold.
+        textSha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: SHA-256 of the UTF-8 text bytes, present in both modes.
+        textSizeBytes:
+          type: integer
+          minimum: 0
+          description: UTF-8 byte size of the text. At most 65536 when extractedText is present.
+        extractorVersion:
+          type: string
+          minLength: 1
+          description: Extraction component and library version, for example pdfbox-3.x.

@@ -1,0 +1,11 @@
+{
+  "version": "v1",
+  "hooks": [{
+    "name": "Block task completion without contract",
+    "trigger": "PostTaskExecution",
+    "action": {
+      "type": "command",
+      "command": ".kiro/hooks/verify-contract.sh"
+    }
+  }]
+}
