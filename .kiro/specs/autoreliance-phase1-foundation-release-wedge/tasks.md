@@ -8,8 +8,9 @@ Languages follow the design and `tech.md`: Python 3.12/FastAPI for `data-readine
 
 Ordering rules:
 
-- Contract-first: AsyncAPI 3.0 (tasks 2.1, 2.2, 2.8, and 2.9), protobuf (task 2.3), and OpenAPI 3.1 (task 2.4) are defined and validated before any producer, consumer, or endpoint code. Every later implementation task that produces, consumes, or exposes a contract element depends on tasks 2.1 to 2.9.
-- Dependency-first: task 1.4 resolves and records exact versions before any manifest is written with a dependency (task 1.1 and later).
+- Contract-first: AsyncAPI 3.0 (tasks 2.1, 2.2, 2.8, and 2.9), protobuf (task 2.3), and OpenAPI 3.1 (task 2.4) are defined and validated before task 1.1 writes anything under `services/`, and so before any producer, consumer, or endpoint code. The `verify-contract` hook blocks a write under `services/<context>/` until that context has a contract. Every later implementation task that produces, consumes, or exposes a contract element depends on tasks 2.1 to 2.9.
+- Execution order: task numbers are unchanged, and the Task Dependency Graph sets the order. The contract tasks 2.1, 2.2, 2.3, 2.4, 2.6 (buf CI), 2.8, and 2.9 run before task 1.1. Tasks 2.5 and 2.7 also define CI for contracts, but they check output of later tasks (2.5 runs the Kustomize build of task 1.6 and the Testcontainers suites; 2.7 commits generated clients into the modules of task 1.1), so they run after those tasks.
+- Dependency-first: task 1.4 resolves and records exact versions before any manifest is written with a dependency (the contract tooling and task 1.1 onward).
 - Each implementation sub-task lists its own acceptance criteria and its own tests. A sub-task is complete only when every listed test passes.
 - Each correctness property from the design is its own sub-task, placed directly after the implementation it checks.
 - Phase 2 to 4 modules are not implemented. They appear only as reserved event names (task 2.1) and a continuity check (task 21.1, `docs/phasing.md`).
@@ -28,6 +29,7 @@ Repository conventions used by every task (from `structure.md`, `api-standards.m
 
 - [ ] 1. Monorepo scaffolding and local environment
   - [ ] 1.1 Create the monorepo layout, build tooling, and context skeletons
+    - Depends on tasks 1.4, 2.1, 2.2, 2.3, 2.4, 2.6, 2.8, and 2.9, so every context directory this task creates under `services/` already has a contract in `contracts/` (contract-first rule in `structure.md`, enforced by the `verify-contract` hook).
     - Create `apps/web`, `services/data-readiness` (Python, `app/data_readiness/main.py`), `services/legacy-integration` (Java, `src/main/java/com/autoreliance/legacyintegration/`), `services/integration-intelligence`, `services/configuration-assurance`, `services/release-assurance`, `services/release-assurance/inference-sidecar` (Python, `app/release_assurance/main.py`), `services/api-gateway`, `services/audit-sink`, `libs/` (shared Java and Python libraries), `contracts/{asyncapi,openapi,proto}`, `platform/{deployables,k8s/base,k8s/overlays/dev,k8s/overlays/staging,terraform}`, and `.github/workflows/`.
     - Add Maven (`pom.xml`, Java 21, Spring Boot 4.1.x with the Spring Cloud 2025.1.x BOM) for Java modules, `pyproject.toml` (Python 3.12) for Python modules, and `package.json` (web) using only the exact versions recorded by task 1.4, plus a root task runner that builds and tests every module.
     - Each context skeleton exposes a `/health` endpoint that reports healthy with no other context running.
@@ -734,7 +736,7 @@ Repository conventions used by every task (from `structure.md`, `api-standards.m
   - Redis broker and cache are separate instances in production config; the Spring Cloud BOM version is pinned in the ledger; Flyway and Alembic are both configured (one per runtime); generated OpenAPI clients are drift-checked in CI; the buf breaking check runs on every `contracts/proto/` change; `release-assurance` does not consume `release.risk.scored`; the Phase 1 ML scope of the sidecar is documented.
 - **Manual review gates (`validation.md`, do not auto-approve).** `design.md` proposes no shared database and no separate vector database; this file contains no Phase 2 to 4 service tasks (only the documentation task 21.1).
 - Deviation from the workflow default: test sub-tasks are not marked optional (`*`), because the request requires every task to carry its own tests and to stay incomplete until they pass. Property test sub-tasks are required for the same reason.
-- Contract-first gate: tasks 2.1 to 2.8 precede all producer, consumer, and endpoint code, and the dependency graph places them before every later wave that touches those contracts. The repository's contract hook looks for `contracts/openapi/<service>.yaml`, `contracts/asyncapi/<service>.yaml`, or `contracts/proto/<service>/` for each changed `services/<service>/`, so every context keeps those per-context files even though the three risk topics also have per-topic files.
+- Contract-first gate: the contract tasks 2.1, 2.2, 2.3, 2.4, 2.6, 2.8, and 2.9 precede task 1.1 and all producer, consumer, and endpoint code, and the dependency graph places them before every later wave that touches those contracts. Tasks 2.5 and 2.7 run after tasks 1.6 and 1.1, whose output they check. The repository's contract hook looks for `contracts/openapi/<service>.yaml`, `contracts/asyncapi/<service>.yaml`, or `contracts/proto/<service>/` for each changed `services/<service>/`, so every context keeps those per-context files even though the three risk topics also have per-topic files.
 - Dependency-first gate: task 1.4 precedes every manifest. Versions are resolved and verified at execution time. Libraries beyond the brief are limited to the five approved in ADR-003 and the object-storage additions approved in ADR-012 (AWS SDK for Java v2 `s3`, boto3, and the digest-pinned Garage image, ADR-013); anything else needs user approval. `spring-vault-core` is pinned to 4.1.2 (ADR-010).
 - Directories are one per bounded context under `services/` as required by `structure.md`. The five deployables are packaging units under `platform/` (task 1.6). The repository hooks (`verify-contract.sh`, `check-phase-scope.sh`, `run-affected-tests.sh`) list service names and need user edits for `legacy-integration`, `configuration-assurance`, `api-gateway`, and `audit-sink`, and `run-affected-tests.sh` needs a branch for the sidecar. This plan does not edit hooks.
 - Helm is deferred to Phase 2+ (ADR-007). `platform/k8s/` holds plain Kubernetes manifests organized as Kustomize `base/` and `overlays/dev` and `overlays/staging`. Introduce Helm when the deployable count exceeds six or overlays duplicate more than resource limits and replicas.
@@ -752,27 +754,30 @@ Repository conventions used by every task (from `structure.md`, `api-standards.m
 {
   "waves": [
     { "id": 0, "tasks": ["1.4"] },
-    { "id": 1, "tasks": ["1.1"] },
-    { "id": 2, "tasks": ["1.2", "1.3", "1.5", "2.1", "2.2", "2.3", "2.4", "2.8", "2.9"] },
-    { "id": 3, "tasks": ["1.6", "1.7", "2.5", "2.6", "2.7"] },
-    { "id": 4, "tasks": ["1.8", "3"] },
-    { "id": 5, "tasks": ["4.1", "4.4", "4.5", "4.8"] },
-    { "id": 6, "tasks": ["4.2", "4.3", "4.9", "4.10", "4.11"] },
-    { "id": 7, "tasks": ["4.6", "4.7"] },
-    { "id": 8, "tasks": ["5"] },
-    { "id": 9, "tasks": ["6.1", "7.1", "9.1", "10.1", "12.1"] },
-    { "id": 10, "tasks": ["6.2", "6.7", "7.7", "9.2", "10.2", "12.2"] },
-    { "id": 11, "tasks": ["6.3", "6.4", "6.5", "6.6", "6.8", "6.9", "6.10", "6.12", "6.13", "7.2", "7.8", "7.10", "7.11", "9.3", "9.4", "10.3", "10.4", "10.5", "12.3", "12.4", "12.5"] },
-    { "id": 12, "tasks": ["6.11", "6.14", "6.15", "7.3", "7.4", "7.5", "7.9", "7.12", "9.5", "9.6", "9.7", "9.8", "9.9", "12.6", "12.7", "12.8"] },
-    { "id": 13, "tasks": ["7.13", "7.14", "7.17", "7.6", "9.10", "9.11", "12.9", "12.10", "12.13", "12.14"] },
-    { "id": 14, "tasks": ["7.16", "10.6", "12.11", "12.12", "12.15", "12.16", "12.17", "12.18"] },
-    { "id": 15, "tasks": ["8", "11", "13"] },
-    { "id": 16, "tasks": ["14.1", "15.1"] },
-    { "id": 17, "tasks": ["14.2", "14.3", "15.2", "16.1", "17.1"] },
-    { "id": 18, "tasks": ["7.15", "15.3", "18.1", "19.1", "20.1"] },
-    { "id": 19, "tasks": ["7.18", "16.2", "18.2", "19.2"] },
-    { "id": 20, "tasks": ["18.3", "20.2", "20.3", "21.1"] },
-    { "id": 21, "tasks": ["22"] }
+    { "id": 1, "tasks": ["2.1", "2.3", "2.4"] },
+    { "id": 2, "tasks": ["2.2", "2.6", "2.8", "2.9"] },
+    { "id": 3, "tasks": ["1.1"] },
+    { "id": 4, "tasks": ["1.2", "1.3", "1.5", "2.7"] },
+    { "id": 5, "tasks": ["1.6", "1.7"] },
+    { "id": 6, "tasks": ["1.8", "2.5"] },
+    { "id": 7, "tasks": ["3"] },
+    { "id": 8, "tasks": ["4.1", "4.4", "4.5", "4.8"] },
+    { "id": 9, "tasks": ["4.2", "4.3", "4.9", "4.10", "4.11"] },
+    { "id": 10, "tasks": ["4.6", "4.7"] },
+    { "id": 11, "tasks": ["5"] },
+    { "id": 12, "tasks": ["6.1", "7.1", "9.1", "10.1", "12.1"] },
+    { "id": 13, "tasks": ["6.2", "6.7", "7.7", "9.2", "10.2", "12.2"] },
+    { "id": 14, "tasks": ["6.3", "6.4", "6.5", "6.6", "6.8", "6.9", "6.10", "6.12", "6.13", "7.2", "7.8", "7.10", "7.11", "9.3", "9.4", "10.3", "10.4", "10.5", "12.3", "12.4", "12.5"] },
+    { "id": 15, "tasks": ["6.11", "6.14", "6.15", "7.3", "7.4", "7.5", "7.9", "7.12", "9.5", "9.6", "9.7", "9.8", "9.9", "12.6", "12.7", "12.8"] },
+    { "id": 16, "tasks": ["7.13", "7.14", "7.17", "7.6", "9.10", "9.11", "12.9", "12.10", "12.13", "12.14"] },
+    { "id": 17, "tasks": ["7.16", "10.6", "12.11", "12.12", "12.15", "12.16", "12.17", "12.18"] },
+    { "id": 18, "tasks": ["8", "11", "13"] },
+    { "id": 19, "tasks": ["14.1", "15.1"] },
+    { "id": 20, "tasks": ["14.2", "14.3", "15.2", "16.1", "17.1"] },
+    { "id": 21, "tasks": ["7.15", "15.3", "18.1", "19.1", "20.1"] },
+    { "id": 22, "tasks": ["7.18", "16.2", "18.2", "19.2"] },
+    { "id": 23, "tasks": ["18.3", "20.2", "20.3", "21.1"] },
+    { "id": 24, "tasks": ["22"] }
   ]
 }
 ```
