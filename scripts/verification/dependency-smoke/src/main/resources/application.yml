@@ -1,0 +1,12 @@
+spring:
+  main:
+    web-application-type: reactive
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: smoke
+              uri: http://localhost:9
+              predicates:
+                - Path=/smoke/**
