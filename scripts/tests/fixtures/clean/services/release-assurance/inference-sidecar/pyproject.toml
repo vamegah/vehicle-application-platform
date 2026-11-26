@@ -1,0 +1,9 @@
+[project]
+name = "inference-sidecar"
+version = "0.0.0"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi==0.165.0",
+  "xgboost==3.4.1",
+  "scikit-learn==1.9.1",
+]
