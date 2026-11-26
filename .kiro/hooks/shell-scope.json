@@ -1,0 +1,17 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "shell-scope",
+      "description": "Block force pushes, pushes to main, reset --hard, clean -f, branch -D, --no-verify, git config, and rm -rf",
+      "trigger": "PreToolUse",
+      "enabled": true,
+      "timeout": 30,
+      "matcher": "execute_pwsh|control_pwsh_process",
+      "action": {
+        "type": "command",
+        "command": "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .kiro/hooks/scripts/check-shell-scope.ps1"
+      }
+    }
+  ]
+}

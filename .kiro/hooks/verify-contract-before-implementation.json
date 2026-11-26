@@ -1,11 +1,28 @@
 {
   "version": "v1",
-  "hooks": [{
-    "name": "Block task completion without contract",
-    "trigger": "PostTaskExecution",
-    "action": {
-      "type": "command",
-      "command": ".kiro/hooks/verify-contract.sh"
+  "hooks": [
+    {
+      "name": "Enforce contract-first implementation",
+      "description": "Prevent service implementation before an API contract exists",
+      "enabled": true,
+      "trigger": "PreToolUse",
+      "matcher": "fs_write|str_replace|fs_append|smart_relocate",
+      "timeout": 30,
+      "action": {
+        "type": "command",
+        "command": "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .kiro/hooks/scripts/verify-contract.ps1 -Mode PreWrite"
+      }
+    },
+    {
+      "name": "Verify contracts after task execution",
+      "description": "Audit contracts for all modified services",
+      "enabled": true,
+      "trigger": "PostTaskExec",
+      "timeout": 60,
+      "action": {
+        "type": "command",
+        "command": "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .kiro/hooks/scripts/verify-contract.ps1 -Mode Audit"
+      }
     }
-  }]
+  ]
 }
