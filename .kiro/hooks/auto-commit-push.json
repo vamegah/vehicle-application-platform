@@ -3,11 +3,12 @@
   "hooks": [
     {
       "name": "Auto commit and push after agent stops",
-      "trigger": "agentStop",
+      "trigger": "Stop",
       "action": {
-        "type": "command",
-        "command": ".kiro/hooks/scripts/commit-and-push.sh"
-      }
+        "type": "agent",
+        "prompt": "Push when the feature is completed"
+      },
+      "enabled": true
     }
   ]
 }

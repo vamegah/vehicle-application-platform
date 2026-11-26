@@ -1,0 +1,5 @@
+These fixture poms feed scripts/tests/test_vault_dependency_tree.py. Only `good` may pass.
+good                      spring-vault-core 4.1.2, explicit, no Cloud Vault starter
+vault-4-0-x               spring-vault-core 4.0.5 explicit
+vault-managed-by-cloud    spring-vault-core with no version (Cloud BOM manages 4.0.x)
+vault-starter             good plus spring-cloud-starter-vault-config
