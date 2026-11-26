@@ -1,12 +1,17 @@
 {
   "version": "v1",
-  "hooks": [{
-    "name": "Run tests on save",
-    "trigger": "PostFileSave",
-    "matcher": "\\.(java|py|ts|tsx)$",
-    "action": {
-      "type": "command",
-      "command": ".kiro/hooks/run-affected-tests.sh"
+  "hooks": [
+    {
+      "name": "Run tests on save",
+      "description": "Run automated tests for affected services after source files are saved",
+      "enabled": true,
+      "trigger": "PostFileSave",
+      "matcher": "\\.(java|py|ts|tsx)$",
+      "timeout": 300,
+      "action": {
+        "type": "command",
+        "command": "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .kiro/hooks/scripts/run-affected-tests.ps1"
+      }
     }
-  }]
+  ]
 }

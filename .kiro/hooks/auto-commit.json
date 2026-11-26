@@ -1,0 +1,16 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "auto-commit",
+      "description": "Validate the working tree on stop; commit and push the task branch only when release-policy.json enables autoCommit and autoPush",
+      "trigger": "Stop",
+      "enabled": false,
+      "timeout": 600,
+      "action": {
+        "type": "command",
+        "command": "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .kiro/hooks/scripts/commit-and-push.ps1"
+      }
+    }
+  ]
+}

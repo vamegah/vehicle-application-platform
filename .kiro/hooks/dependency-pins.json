@@ -1,0 +1,17 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "dependency-pins",
+      "description": "Block a write to a dependency manifest that introduces a loose version or a MinIO reference",
+      "trigger": "PreToolUse",
+      "enabled": true,
+      "timeout": 30,
+      "matcher": "fs_write|str_replace|fs_append",
+      "action": {
+        "type": "command",
+        "command": "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .kiro/hooks/scripts/check-dependency-pins.ps1"
+      }
+    }
+  ]
+}

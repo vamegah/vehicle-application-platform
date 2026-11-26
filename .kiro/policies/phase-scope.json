@@ -1,0 +1,25 @@
+{
+  "phase1Contexts": [
+    "data-readiness",
+    "legacy-integration",
+    "integration-intelligence",
+    "configuration-assurance",
+    "release-assurance",
+    "api-gateway",
+    "audit-sink"
+  ],
+  "futureContexts": [
+    "quality-intelligence",
+    "diagnostic",
+    "connected-service",
+    "test-lab",
+    "security-compliance",
+    "ota-risk",
+    "knowledge-copilot"
+  ],
+  "blockedPaths": [
+    ".git/",
+    ".env",
+    ".env."
+  ]
+}

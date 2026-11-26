@@ -1,0 +1,29 @@
+{
+  "manifestFileNames": [
+    "package.json",
+    "pyproject.toml",
+    "pom.xml",
+    "build.gradle",
+    "build.gradle.kts",
+    "docker-compose.yml",
+    "docker-compose.yaml"
+  ],
+  "manifestFilePatterns": [
+    "^requirements[^/]*\\.txt$"
+  ],
+  "loosePatterns": [
+    { "pattern": ">=", "reason": "range operator >=" },
+    { "pattern": "~=", "reason": "compatible-release operator ~=" },
+    { "pattern": "~>", "reason": "range operator ~>" },
+    { "pattern": "\"[\\^~][0-9]", "reason": "caret or tilde range" },
+    { "pattern": "(?i)\\blatest\\b", "reason": "latest tag or version" },
+    { "pattern": "\"\\*\"", "reason": "wildcard version" },
+    { "pattern": "(?i)\\bminio\\b", "reason": "MinIO is not approved (tech.md)" }
+  ],
+  "exemptLinePatterns": [
+    "^\\s*requires-python\\s*=",
+    "^\\s*#",
+    "^\\s*<!--"
+  ],
+  "fullChecker": "scripts/check-dependency-pins"
+}

@@ -1,0 +1,31 @@
+{
+  "autoCommit": false,
+  "autoPush": false,
+  "allowedBranchRegex": "^(task|feature|fix|chore|spec|docs)/[A-Za-z0-9._/-]+$",
+  "protectedBranches": ["main", "master", "production"],
+  "deniedShellPatternsNote": "Each git pattern is limited to one command segment ([^;|&\\r\\n]*), so text after ; | or & is never read as part of the git command.",
+  "deniedShellPatterns": [
+    { "pattern": "(?i)\\bgit\\s+(?:-c\\s+\\S+\\s+|-\\S+\\s+)*push\\b[^;|&\\r\\n]*(?:--force\\b|--force-with-lease\\b|\\s-f\\b|\\s\\+\\S)", "reason": "force push (git-workflow.md: never force-push)" },
+    { "pattern": "(?i)\\bgit\\s+(?:-c\\s+\\S+\\s+|-\\S+\\s+)*push\\b[^;|&\\r\\n]*\\s(?:\\S*:)?(?:refs/heads/)?(?:main|master)(?=\\s|$|[;|&])", "reason": "push to main (git-workflow.md: changes reach main only through a pull request)" },
+    { "pattern": "(?i)\\bgit\\s+(?:-c\\s+\\S+\\s+|-\\S+\\s+)*reset\\b[^;|&\\r\\n]*--hard\\b", "reason": "git reset --hard" },
+    { "pattern": "(?i)\\bgit\\s+(?:-c\\s+\\S+\\s+|-\\S+\\s+)*clean\\b[^;|&\\r\\n]*\\s-[a-z]*f", "reason": "git clean -f" },
+    { "pattern": "(?i)\\bgit\\s+(?:-c\\s+\\S+\\s+|-\\S+\\s+)*branch\\b[^;|&\\r\\n]*\\s-D\\b", "reason": "git branch -D" },
+    { "pattern": "(?i)\\bgit\\s+(?:-c\\s+\\S+\\s+|-\\S+\\s+)*(?:commit|push|merge|rebase)\\b[^;|&\\r\\n]*--no-verify\\b", "reason": "skipping git hooks" },
+    { "pattern": "(?i)\\bgit\\s+(?:-c\\s+\\S+\\s+)*config\\b", "reason": "modifying git config" },
+    { "pattern": "(?i)\\brm\\s+-[a-z]*r[a-z]*f|\\brm\\s+-[a-z]*f[a-z]*r", "reason": "rm -rf" }
+  ],
+  "checks": [
+    {
+      "name": "Dependency pin check",
+      "executable": "python",
+      "arguments": ["scripts/check-dependency-pins"],
+      "requiresPath": "scripts/check-dependency-pins"
+    },
+    {
+      "name": "Pin check fixture tests",
+      "executable": "python",
+      "arguments": ["-m", "unittest", "discover", "-s", "scripts/tests", "-p", "test_check_dependency_pins.py"],
+      "requiresPath": "scripts/tests/test_check_dependency_pins.py"
+    }
+  ]
+}
