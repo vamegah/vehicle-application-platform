@@ -1,0 +1,312 @@
+asyncapi: 3.0.0
+info:
+  title: legacy-integration
+  version: 1.0.0
+  description: >-
+    Event contract of the legacy-integration bounded context (Java connector runtime, data-platform
+    deployable). legacy-integration publishes test.result.recorded from the optional Azure DevOps and
+    Jenkins connectors (Req 3.8), the poison-PDF topic dlt.legacy-integration-extraction, and audit
+    events for connector runs (Req 3.7). It also produces document.text.extracted and the four ERP and
+    MES topics; those are defined only in their own files and are referenced here with external $ref,
+    never redefined (ADR-008, ADR-011). legacy-integration consumes no topic, so it has no consumer
+    group and no consumer dead-letter topic. There is no synchronous HTTP call between legacy-integration
+    and data-readiness on any data path (ADR-024). Envelope: the base envelope of
+    contracts/asyncapi/common/envelope.yaml, defined file-locally and checked in CI; trace context
+    travels in Kafka record headers.
+  x-phase: 1
+  x-owner-context: legacy-integration
+defaultContentType: application/json
+servers:
+  kafka:
+    host: kafka:9092
+    protocol: kafka
+    description: Apache Kafka 3.x event backbone (local dev address).
+channels:
+  testResultRecorded:
+    address: test.result.recorded
+    description: >-
+      One message per version of a test result reported by a CI connector. Partition key is
+      "{tenantId}:{canonicalId}" with canonicalId = testResultId, so every version of one test result
+      stays ordered in one partition. A consumer keeps the version with the highest
+      (version, occurrenceVersion) pair (Req 8.4).
+    messages:
+      TestResultRecorded:
+        $ref: '#/components/messages/TestResultRecorded'
+    bindings:
+      kafka:
+        topic: test.result.recorded
+        partitions: 12
+        replicas: 1
+  dltLegacyIntegrationExtraction:
+    address: dlt.legacy-integration-extraction
+    description: >-
+      Poison-PDF topic. One record for each document that the extraction worker could not extract after
+      the attempt limit. Not a consumer-group topic; it follows the dlt.<name> naming exception. It
+      carries no document bytes and no extracted text.
+    messages:
+      ExtractionFailed:
+        $ref: '#/components/messages/ExtractionFailed'
+    bindings:
+      kafka:
+        topic: dlt.legacy-integration-extraction
+        partitions: 3
+        replicas: 1
+  documentTextExtracted:
+    $ref: './document.text.extracted.yaml#/channels/documentTextExtracted'
+  erpMasterdataChanged:
+    $ref: './erp.masterdata.changed.yaml#/channels/erpMasterdataChanged'
+  erpPurchaseorderUpdated:
+    $ref: './erp.purchaseorder.updated.yaml#/channels/erpPurchaseorderUpdated'
+  mesWorkorderReported:
+    $ref: './mes.workorder.reported.yaml#/channels/mesWorkorderReported'
+  mesQualityInspectionRecorded:
+    $ref: './mes.quality.inspection.recorded.yaml#/channels/mesQualityInspectionRecorded'
+  auditEventRecorded:
+    $ref: './audit-sink.yaml#/channels/auditEventRecorded'
+operations:
+  publishTestResultRecorded:
+    action: send
+    summary: A configured CI connector publishes a test result through the transactional outbox.
+    channel:
+      $ref: '#/channels/testResultRecorded'
+    messages:
+      - $ref: '#/channels/testResultRecorded/messages/TestResultRecorded'
+    x-owner-context: legacy-integration
+  consumeTestResultRecorded:
+    action: receive
+    summary: release-assurance stores the result as an Evidence_Item in its Release_Projection (Req 8.1).
+    channel:
+      $ref: '#/channels/testResultRecorded'
+    messages:
+      - $ref: '#/channels/testResultRecorded/messages/TestResultRecorded'
+    bindings:
+      kafka:
+        groupId:
+          type: string
+          enum:
+            - release-assurance-evidence
+    x-owner-context: release-assurance
+    x-dead-letter-topic: dlt.release-assurance-evidence
+  publishExtractionFailed:
+    action: send
+    summary: The extraction worker records a poison PDF after the attempt limit.
+    channel:
+      $ref: '#/channels/dltLegacyIntegrationExtraction'
+    messages:
+      - $ref: '#/channels/dltLegacyIntegrationExtraction/messages/ExtractionFailed'
+    x-owner-context: legacy-integration
+  publishDocumentTextExtracted:
+    $ref: './document.text.extracted.yaml#/operations/publishDocumentTextExtracted'
+  publishErpMasterdataChanged:
+    $ref: './erp.masterdata.changed.yaml#/operations/publishErpMasterdataChanged'
+  publishErpPurchaseorderUpdated:
+    $ref: './erp.purchaseorder.updated.yaml#/operations/publishErpPurchaseorderUpdated'
+  publishMesWorkorderReported:
+    $ref: './mes.workorder.reported.yaml#/operations/publishMesWorkorderReported'
+  publishMesQualityInspectionRecorded:
+    $ref: './mes.quality.inspection.recorded.yaml#/operations/publishMesQualityInspectionRecorded'
+  publishAuditEventRecorded:
+    action: send
+    summary: legacy-integration records connector runs and operator calls to /admin/ routes it serves.
+    channel:
+      $ref: '#/channels/auditEventRecorded'
+    messages:
+      - $ref: '#/channels/auditEventRecorded/messages/AuditEventRecorded'
+    x-owner-context: legacy-integration
+components:
+  messages:
+    TestResultRecorded:
+      name: TestResultRecorded
+      title: Test result recorded
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/KafkaHeaders'
+      payload:
+        $ref: '#/components/schemas/TestResultRecordedEnvelope'
+      bindings:
+        kafka:
+          key:
+            type: string
+            description: '"{tenantId}:{canonicalId}" (canonicalId = testResultId)'
+    ExtractionFailed:
+      name: ExtractionFailed
+      title: Document extraction failed (poison PDF)
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/ExtractionFailedRecord'
+      bindings:
+        kafka:
+          key:
+            type: string
+            description: '"{tenantId}:{canonicalDocumentId}"'
+  schemas:
+    KafkaHeaders:
+      type: object
+      required:
+        - traceparent
+      properties:
+        traceparent:
+          type: string
+          description: W3C trace context.
+        tracestate:
+          type: string
+          description: W3C trace context vendor state.
+    TestResultRecordedEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+        - eventId
+        - eventType
+        - version
+        - tenantId
+        - occurredAt
+        - payload
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        eventType:
+          type: string
+          const: test.result.recorded
+        version:
+          type: integer
+          const: 1
+        tenantId:
+          type: string
+          format: uuid
+        occurredAt:
+          type: string
+          format: date-time
+        payload:
+          $ref: '#/components/schemas/TestResultRecordedPayload'
+    TestResultRecordedPayload:
+      type: object
+      additionalProperties: false
+      required:
+        - testResultId
+        - occurrenceVersion
+        - testCaseId
+        - testRunId
+        - result
+        - softwareArtifactCanonicalId
+        - coveredEntityCanonicalIds
+        - ciSystem
+        - environment
+        - finishedAt
+      properties:
+        testResultId:
+          type: string
+          format: uuid
+          description: Stable identifier of the test result across its versions.
+        occurrenceVersion:
+          type: integer
+          minimum: 1
+          description: Per-test-result sequence number. With the envelope version it orders versions (Req 8.4).
+        testCaseId:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Identifier of the test case in the tenant's test catalog.
+        testRunId:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: CI run identifier, used in the Evidence_Chain (Req 8.6).
+        result:
+          type: string
+          enum:
+            - passed
+            - failed
+            - skipped
+            - error
+        softwareArtifactCanonicalId:
+          type: string
+          format: uuid
+          description: Canonical_ID of the Canonical_Software_Artifact under test.
+        coveredEntityCanonicalIds:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+          description: Canonical_IDs of the entities this test covers. A failed result covers nothing (Req 9.8).
+        commitId:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Source commit identifier, when the CI system reports it (Evidence_Chain).
+        firmwareBuildId:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Firmware build identifier, when the CI system reports it (Evidence_Chain).
+        ciSystem:
+          type: string
+          enum:
+            - azure-devops
+            - jenkins
+            - sample
+        environment:
+          type: string
+          enum:
+            - ci
+            - sil
+            - hil
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+        durationMs:
+          type: integer
+          minimum: 0
+    ExtractionFailedRecord:
+      type: object
+      additionalProperties: false
+      required:
+        - tenantId
+        - canonicalDocumentId
+        - objectStoreUri
+        - contentSha256
+        - failureReason
+        - attempts
+        - failedAt
+        - extractorVersion
+      properties:
+        tenantId:
+          type: string
+          format: uuid
+        canonicalDocumentId:
+          type: string
+          format: uuid
+        objectStoreUri:
+          type: string
+          pattern: '^s3://autoreliance-raw-[a-z0-9]{2,8}(-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/raw/documents/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{64}\.pdf$'
+          description: Location of the raw PDF in the tenant's raw bucket (same pattern as document.text.extracted).
+        contentSha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        failureReason:
+          type: string
+          enum:
+            - corrupt
+            - encrypted
+            - too-large
+            - too-many-pages
+            - timeout
+            - text-too-large
+        attempts:
+          type: integer
+          minimum: 1
+        failedAt:
+          type: string
+          format: date-time
+        extractorVersion:
+          type: string
+          minLength: 1
+        detail:
+          type: string
+          maxLength: 1024
+          description: Short diagnostic message. Never document content.

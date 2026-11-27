@@ -94,6 +94,13 @@ Toolchain: Python 3.12.16 (latest 3.12.x on endoflife.date/api/python.json, read
 | hypothesis | 6.170.17 | PyPI, 2026-11-26. |
 | pact-python | 4.2.0 | PyPI, 2026-11-26 (requires Python 3.11 or later). |
 | testcontainers | 4.15.0 | PyPI, 2026-11-26. Python Testcontainers. Object-store tests use `DockerContainer` with the digest-pinned Garage image; no object-store-specific module (`scripts/verification/python/test_garage_boto3_smoke.py`). |
+| PyYAML | 6.0.4 | APPROVED by the user on 2026-11-26 for the contract tests (task 2.1). Reads the AsyncAPI YAML contracts. PyPI, 2026-11-26 (requires Python 3.10 or later). Used only in `contracts/tests/requirements.txt`. |
+| jsonschema | 4.26.0 | APPROVED by the user on 2026-11-26 for the contract tests (task 2.1). Validates golden examples against the AsyncAPI payload schemas (Draft 7). PyPI, 2026-11-26 (requires Python 3.10 or later). Its `date-time` check needs an extra package, so the tests use a standard-library check instead. Used only in `contracts/tests/requirements.txt`. |
+| attrs | 26.1.0 | Pinned exactly as a dependency of jsonschema and referencing (task 2.1, approved with jsonschema). PyPI, 2026-11-26. |
+| jsonschema-specifications | 2025.9.1 | Pinned exactly as a dependency of jsonschema (task 2.1, approved with jsonschema). PyPI, 2026-11-26. |
+| referencing | 0.37.0 | Pinned exactly as a dependency of jsonschema; the contract tests also use it to resolve `$ref` across contract files (task 2.1, approved with jsonschema). PyPI, 2026-11-26. |
+| rpds-py | 2026.9.1 | Pinned exactly as a dependency of jsonschema and referencing (task 2.1, approved with jsonschema). PyPI, 2026-11-26 (requires Python 3.11 or later; wheels for 3.11 and 3.12). |
+| typing-extensions | 4.16.0 | Pinned exactly as a dependency of referencing on Python below 3.13 (task 2.1, approved with jsonschema). PyPI, 2026-11-26. `pip freeze` of a clean virtual environment installed from `contracts/tests/requirements.txt` shows exactly these seven packages, and `pip check` reports no broken requirement. |
 
 No Python Kafka client is named in the spec and none is recorded here. Adding one needs its own row and a user decision (the spec names only the Java Kafka clients).
 
@@ -120,6 +127,7 @@ Toolchain: Node 24.22.3 (Active LTS, 2025-10-28 to 2028-04-30; read from nodejs.
 | jsdom | 31.0.1 | npm, 2026-11-26. |
 | fast-check | 4.11.0 | npm, 2026-11-26. Property-based tests for the web app. |
 | openapi-typescript | 7.13.0 | APPROVED beyond the brief (ADR-003). Generates the typed `apps/web` client from `contracts/openapi/gateway.yaml`. Condition: CI regenerates on every change to `contracts/openapi/` and fails on any diff. Latest on npm 2026-11-26. Peer: `typescript@^5.x`. |
+| @asyncapi/cli | 6.3.1 | APPROVED by the user on 2026-11-26 for contract validation (task 2.1). The official AsyncAPI 3.0 validator. Latest on npm 2026-11-26; requires Node 24.11 or later, so the Node 24.22.3 toolchain fits. Used only in `contracts/package.json`; its transitive tree is fixed by `contracts/package-lock.json` (`npm ci`). Run with `ASYNCAPI_TELEMETRY=false`. All 15 AsyncAPI documents validate with 0 errors and 0 warnings; the one information message is that AsyncAPI 3.1.0 exists. |
 
 ## Build and CI tooling
 | Tool | Version | Notes |
@@ -137,6 +145,7 @@ Toolchain: Node 24.22.3 (Active LTS, 2025-10-28 to 2028-04-30; read from nodejs.
 | Java (toolchain) | 21 | `tech.md`. The smoke build ran on Oracle JDK 21.0.3. Boot 4.1.3 supports Java 17 to 27. |
 | actions/checkout | v7.0.1 | GitHub Actions only (`tech.md`). GitHub releases API, read 2026-11-26. Used by `.github/workflows/dependency-pins.yml`. |
 | actions/setup-python | v7.1.0 | GitHub releases API, read 2026-11-26. |
+| actions/setup-node | v7.1.0 | GitHub releases API (public, read anonymously), latest release published 2026-10-08, read 2026-11-26. Used by `.github/workflows/contracts.yml` (task 2.1). |
 | actions/setup-java | v6.3.0 | GitHub releases API, read 2026-11-26. |
 
 ## Container images and infrastructure

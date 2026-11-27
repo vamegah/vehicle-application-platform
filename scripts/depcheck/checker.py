@@ -18,6 +18,7 @@ LEDGER_NAME = "DEPENDENCIES.lock.md"
 SIDECAR_DIR = "services/release-assurance/inference-sidecar"
 FIXTURE_DIR = "scripts/tests/fixtures"
 VERIFICATION_DIR = "scripts/verification"
+SERVICE_MANIFEST_DIRS = ("services/", "apps/")
 EXCLUDED_DIRS = {".git", ".kiro", ".github", "node_modules", "target", ".venv", "venv", "__pycache__", "dist", "build", ".next"}
 
 # Imported BOM that manages a Maven group, so artifacts in that group carry no <version>.
@@ -602,7 +603,10 @@ def check(root: Path, ledger_path: Path | None = None) -> tuple[list[Violation],
             is_manifest = False
         if is_manifest:
             manifest_count += 1
-            if not rel.startswith(VERIFICATION_DIR + "/"):
+            # Only service and app manifests switch on the ledger-unused rule (task 1.1 creates them).
+            # Tooling manifests such as contracts/package.json are pin-checked and count as use, but do
+            # not switch the rule on by themselves.
+            if rel.startswith(SERVICE_MANIFEST_DIRS):
                 real_manifests += 1
         violations += scan_text(path, rel, ledger)
 

@@ -1,0 +1,9 @@
+# Contract test dependencies (task 2.1). Approved by the user on 2026-11-26. Exact pins, recorded in
+# DEPENDENCIES.lock.md. jsonschema's transitive dependencies are pinned too.
+PyYAML==6.0.4
+jsonschema==4.26.0
+attrs==26.1.0
+jsonschema-specifications==2025.9.1
+referencing==0.37.0
+rpds-py==2026.9.1
+typing-extensions==4.16.0

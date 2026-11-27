@@ -1,0 +1,65 @@
+# Golden examples for test.result.recorded (contracts/asyncapi/legacy-integration.yaml).
+# All values are fictional.
+doc: legacy-integration.yaml
+message: TestResultRecorded
+valid:
+  passedOnHil:
+    eventId: 9f4c6e3b-5a0b-4a5c-9e4f-4b0c7c1e5f01
+    eventType: test.result.recorded
+    version: 1
+    tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    occurredAt: '2026-11-26T10:00:00Z'
+    payload:
+      testResultId: 8a9b0c1d-2e3f-4a4b-9c5d-6e7f8a9b0c1d
+      occurrenceVersion: 2
+      testCaseId: FIC-TC-BRAKE-017
+      testRunId: FIC-RUN-88812
+      result: passed
+      softwareArtifactCanonicalId: 2a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d
+      coveredEntityCanonicalIds: [5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a]
+      commitId: fic0commit1234
+      firmwareBuildId: FIC-BUILD-5521
+      ciSystem: jenkins
+      environment: hil
+      startedAt: '2026-11-26T09:58:00Z'
+      finishedAt: '2026-11-26T09:59:30Z'
+      durationMs: 90000
+  minimalFailed:
+    eventId: 9f4c6e3b-5a0b-4a5c-9e4f-4b0c7c1e5f02
+    eventType: test.result.recorded
+    version: 1
+    tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    occurredAt: '2026-11-26T10:00:00Z'
+    payload:
+      testResultId: 8a9b0c1d-2e3f-4a4b-9c5d-6e7f8a9b0c1e
+      occurrenceVersion: 1
+      testCaseId: FIC-TC-BRAKE-018
+      testRunId: FIC-RUN-88813
+      result: failed
+      softwareArtifactCanonicalId: 2a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d
+      coveredEntityCanonicalIds: [5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a]
+      ciSystem: azure-devops
+      environment: sil
+      finishedAt: '2026-11-26T09:59:30Z'
+invalid:
+  - name: missing occurrenceVersion
+    base: passedOnHil
+    remove: [payload.occurrenceVersion]
+  - name: occurrenceVersion 0
+    base: passedOnHil
+    set: { payload.occurrenceVersion: 0 }
+  - name: no covered entities
+    base: passedOnHil
+    set: { payload.coveredEntityCanonicalIds: [] }
+  - name: unknown result
+    base: passedOnHil
+    set: { payload.result: flaky }
+  - name: unknown CI system
+    base: passedOnHil
+    set: { payload.ciSystem: gitlab }
+  - name: missing testRunId
+    base: passedOnHil
+    remove: [payload.testRunId]
+  - name: negative duration
+    base: passedOnHil
+    set: { payload.durationMs: -1 }

@@ -1,0 +1,106 @@
+# Shared dead-letter record for the `dlt.<consumer-group-id>` topics (design: Event Catalog, Req 17.5).
+#
+# This file is not an AsyncAPI document. Each consuming context defines its own dlt.<consumer-group-id>
+# channels in contracts/asyncapi/<context>.yaml and references DeadLetterRecord from here. A dead-letter
+# record is operational data, not a domain event, so it does not use the domain envelope; it still
+# carries tenantId (security.md: every Kafka message carries tenantId) and keeps the original Kafka key,
+# so it lands in the same partition key space as the original record.
+#
+# The poison-PDF topic dlt.legacy-integration-extraction is not a consumer-group topic and has its own
+# payload in contracts/asyncapi/legacy-integration.yaml.
+x-phase: 1
+components:
+  schemas:
+    DeadLetterRecord:
+      type: object
+      additionalProperties: false
+      required:
+        - deadLetterId
+        - tenantId
+        - consumerGroup
+        - originalTopic
+        - originalPartition
+        - originalOffset
+        - failureKind
+        - failureReason
+        - attempts
+        - firstFailedAt
+        - lastFailedAt
+        - originalValue
+        - originalValueEncoding
+      properties:
+        deadLetterId:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+          description: >-
+            Tenant of the original record, taken from its envelope or, when the envelope cannot be parsed,
+            from the "{tenantId}:" prefix of its Kafka key. A record whose tenant cannot be determined is
+            not written to a dead-letter topic; the consumer logs it and counts it in a metric.
+        consumerGroup:
+          type: string
+          minLength: 1
+          description: The consumer group that failed. The topic name is dlt.<consumerGroup>.
+        originalTopic:
+          type: string
+          minLength: 1
+        originalPartition:
+          type: integer
+          minimum: 0
+        originalOffset:
+          type: integer
+          minimum: 0
+        originalKey:
+          type:
+            - string
+            - 'null'
+        originalEventId:
+          description: eventId of the original record, or null when its envelope cannot be parsed.
+          type:
+            - string
+            - 'null'
+          format: uuid
+        originalVersion:
+          description: Envelope version of the original record, or null when it cannot be parsed.
+          type:
+            - integer
+            - 'null'
+        failureKind:
+          type: string
+          enum:
+            - schema-invalid
+            - unsupported-version
+            - tenant-mismatch
+            - unknown-reference
+            - processing-failed
+        failureReason:
+          type: string
+          minLength: 1
+        validationErrors:
+          type: array
+          items:
+            type: string
+        attempts:
+          type: integer
+          minimum: 1
+        firstFailedAt:
+          type: string
+          format: date-time
+        lastFailedAt:
+          type: string
+          format: date-time
+        originalHeaders:
+          type: object
+          additionalProperties:
+            type: string
+          description: Kafka headers of the original record, including traceparent when present.
+        originalValue:
+          type: string
+          description: The original record value, unchanged.
+        originalValueEncoding:
+          type: string
+          enum:
+            - utf-8
+            - base64

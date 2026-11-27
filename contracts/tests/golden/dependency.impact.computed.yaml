@@ -1,0 +1,69 @@
+# Golden examples for dependency.impact.computed (contracts/asyncapi/integration-intelligence.yaml).
+# All values are fictional.
+doc: integration-intelligence.yaml
+message: DependencyImpactComputed
+valid:
+  twoAffected:
+    eventId: 7d2a4c1f-3e8f-4e3a-9c2d-2f8a5a9c3d01
+    eventType: dependency.impact.computed
+    version: 1
+    tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    occurredAt: '2026-11-26T09:00:02Z'
+    payload:
+      impactResultId: 4c5d6e7f-8a9b-4c0d-9e1f-2a3b4c5d6e7f
+      firmwareChangeId: 9d8c7b6a-5f4e-4d3c-8b2a-190f8e7d6c5b
+      changedArtifactCanonicalId: 2a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d
+      maxDepth: 6
+      truncated: false
+      computedAt: '2026-11-26T09:00:01Z'
+      affected:
+        - canonicalId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+          entityType: ecu
+          depth: 1
+          path:
+            - fromCanonicalId: 2a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d
+              relationship: installed-on
+              toCanonicalId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+        - canonicalId: 3b4c5d6e-7f8a-4b9c-8d0e-1f2a3b4c5d6e
+          entityType: configuration-snapshot
+          depth: 2
+          path:
+            - fromCanonicalId: 2a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d
+              relationship: installed-on
+              toCanonicalId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+            - fromCanonicalId: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+              relationship: depends-on
+              toCanonicalId: 3b4c5d6e-7f8a-4b9c-8d0e-1f2a3b4c5d6e
+  nothingAffectedTruncated:
+    eventId: 7d2a4c1f-3e8f-4e3a-9c2d-2f8a5a9c3d02
+    eventType: dependency.impact.computed
+    version: 1
+    tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    occurredAt: '2026-11-26T09:00:02Z'
+    payload:
+      impactResultId: 4c5d6e7f-8a9b-4c0d-9e1f-2a3b4c5d6e70
+      firmwareChangeId: 9d8c7b6a-5f4e-4d3c-8b2a-190f8e7d6c5c
+      changedArtifactCanonicalId: 2a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d
+      maxDepth: 1
+      truncated: true
+      computedAt: '2026-11-26T09:00:01Z'
+      affected: []
+invalid:
+  - name: affected entity without a path
+    base: twoAffected
+    set: { payload.affected.0.path: [] }
+  - name: unknown relationship type
+    base: twoAffected
+    set: { payload.affected.0.path.0.relationship: owned-by }
+  - name: unknown entity type
+    base: twoAffected
+    set: { payload.affected.0.entityType: warranty-claim }
+  - name: depth 0
+    base: twoAffected
+    set: { payload.affected.0.depth: 0 }
+  - name: missing truncated flag
+    base: twoAffected
+    remove: [payload.truncated]
+  - name: maxDepth 0
+    base: twoAffected
+    set: { payload.maxDepth: 0 }

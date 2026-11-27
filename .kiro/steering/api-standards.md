@@ -27,6 +27,8 @@
 - Documented naming exceptions (exactly these, no others):
   - `dlt.<consumer-group-id>` dead-letter topics.
   - `mes.quality.inspection.recorded` (four segments, approved as written).
+  - `release.evidence.gap.detected` (four segments, from the original platform event catalog, approved as written on 2026-11-26).
+  - Reserved Phase 2+ names from the same catalog, approved as written for when their phase implements them: `quality.failure.cluster.detected` (Phase 2), `dealer.service.event.recorded` (Phase 2), `ota.release.risk.scored` (Phase 3). They have no producer or consumer in Phase 1.
 - `document.text.extracted` matches `<domain>.<entity>.<action>` and is not a naming exception. It is a document-specific topic: it must not be generalised into a generic record or document topic. ERP and MES records use their own domain topics.
 - Base envelope (every topic): `{ "eventId", "eventType", "version", "tenantId", "occurredAt", "payload" }`
 - Source-ingestion envelope (extension of the base envelope, required on the `legacy-integration` source topics `erp.masterdata.changed`, `erp.purchaseorder.updated`, `mes.workorder.reported`, `mes.quality.inspection.recorded`, and `document.text.extracted`): adds top-level `sourceSystem`, `naturalKey`, `contentHash`, `extractedAt`, and an optional `sourceRecordVersion`.

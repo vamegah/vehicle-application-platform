@@ -1,0 +1,41 @@
+# Phase 2 to 4 event names reserved in the platform event catalog (Req 24.5).
+#
+# This file is not an AsyncAPI document. The names are reserved so that no Phase 1 contract reuses them
+# with another meaning. No producer, consumer, channel, or operation exists for any of them in Phase 1;
+# contracts/tests/test_asyncapi_contracts.py fails if an AsyncAPI document declares a channel whose
+# address is a reserved name.
+x-phase: 1
+reservedTopics:
+  - name: warranty.claim.ingested
+    phase: 2
+    plannedProducers: [connected-service, data-readiness]
+  - name: manufacturing.defect.detected
+    phase: 2
+    plannedProducers: [quality-intelligence]
+  - name: supplier.risk.scored
+    phase: 2
+    plannedProducers: [quality-intelligence]
+  - name: quality.failure.cluster.detected
+    phase: 2
+    plannedProducers: [quality-intelligence]
+  - name: diagnostic.hypothesis.ranked
+    phase: 2
+    plannedProducers: [diagnostic]
+  - name: dealer.service.event.recorded
+    phase: 2
+    plannedProducers: [connected-service]
+  - name: sbom.component.updated
+    phase: 3
+    plannedProducers: [security-compliance]
+  - name: vulnerability.detected
+    phase: 3
+    plannedProducers: [security-compliance]
+  - name: ota.release.risk.scored
+    phase: 3
+    plannedProducers: [ota-risk]
+  - name: compliance.evidence.recorded
+    phase: 3
+    plannedProducers: [security-compliance]
+  - name: bench.status.changed
+    phase: 3
+    plannedProducers: [test-lab]

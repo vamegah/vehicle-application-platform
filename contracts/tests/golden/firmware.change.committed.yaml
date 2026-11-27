@@ -1,0 +1,52 @@
+# Golden examples for firmware.change.committed (contracts/asyncapi/integration-intelligence.yaml).
+# All values are fictional.
+doc: integration-intelligence.yaml
+message: FirmwareChangeCommitted
+valid:
+  fromGateway:
+    eventId: 6c1f3b0e-2d7e-4d2f-8b1c-1e7f4f8b2c01
+    eventType: firmware.change.committed
+    version: 1
+    tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    occurredAt: '2026-11-26T09:00:00Z'
+    payload:
+      firmwareChangeId: 9d8c7b6a-5f4e-4d3c-8b2a-190f8e7d6c5b
+      artifactCanonicalId: 2a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d
+      previousVersion: 4.2.1
+      newVersion: 4.3.0
+      origin: gateway
+      committedAt: '2026-11-26T08:59:58Z'
+      commitId: fic0commit1234
+      firmwareBuildId: FIC-BUILD-5521
+  fromConnectorWithoutChainIds:
+    eventId: 6c1f3b0e-2d7e-4d2f-8b1c-1e7f4f8b2c02
+    eventType: firmware.change.committed
+    version: 1
+    tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    occurredAt: '2026-11-26T09:00:00Z'
+    payload:
+      firmwareChangeId: 9d8c7b6a-5f4e-4d3c-8b2a-190f8e7d6c5c
+      artifactCanonicalId: 2a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d
+      previousVersion: 4.3.0
+      newVersion: 4.3.1
+      origin: connector
+      committedAt: '2026-11-26T08:59:58Z'
+invalid:
+  - name: missing previousVersion
+    base: fromGateway
+    remove: [payload.previousVersion]
+  - name: artifact referenced by a raw identifier
+    base: fromGateway
+    set: { payload.artifactCanonicalId: FIC-ECU-BRAKE }
+  - name: unknown origin
+    base: fromGateway
+    set: { payload.origin: email }
+  - name: empty newVersion
+    base: fromGateway
+    set: { payload.newVersion: '' }
+  - name: unknown payload field
+    base: fromGateway
+    set: { payload.vin: FICTIONALVIN0000001 }
+  - name: wrong eventType
+    base: fromGateway
+    set: { eventType: dependency.impact.computed }

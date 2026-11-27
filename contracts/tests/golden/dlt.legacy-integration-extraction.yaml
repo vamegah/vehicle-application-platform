@@ -1,0 +1,34 @@
+# Golden examples for the poison-PDF topic dlt.legacy-integration-extraction
+# (contracts/asyncapi/legacy-integration.yaml). All values are fictional.
+doc: legacy-integration.yaml
+message: ExtractionFailed
+valid:
+  encrypted:
+    tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    canonicalDocumentId: 2e3f4a5b-6c7d-4e8f-9a9b-0c1d2e3f4a5b
+    objectStoreUri: s3://autoreliance-raw-dev/0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d/raw/documents/2e3f4a5b-6c7d-4e8f-9a9b-0c1d2e3f4a5b/9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08.pdf
+    contentSha256: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08
+    failureReason: encrypted
+    attempts: 2
+    failedAt: '2026-11-26T10:05:00Z'
+    extractorVersion: pdfbox-3.0.8
+    detail: document is password protected
+invalid:
+  - name: document bytes in the record
+    base: encrypted
+    set: { pdfBytes: JVBERi0xLjcK }
+  - name: extracted text in the record
+    base: encrypted
+    set: { extractedText: fictional text }
+  - name: unknown failure reason
+    base: encrypted
+    set: { failureReason: unknown }
+  - name: text bucket used as the raw location
+    base: encrypted
+    set: { objectStoreUri: s3://autoreliance-text-dev/0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d/text/documents/2e3f4a5b-6c7d-4e8f-9a9b-0c1d2e3f4a5b/9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08.txt }
+  - name: missing tenantId
+    base: encrypted
+    remove: [tenantId]
+  - name: attempts 0
+    base: encrypted
+    set: { attempts: 0 }

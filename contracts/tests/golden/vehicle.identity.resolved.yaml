@@ -1,0 +1,113 @@
+# Golden examples for vehicle.identity.resolved (contracts/asyncapi/data-readiness.yaml).
+# All values are fictional.
+doc: data-readiness.yaml
+message: VehicleIdentityResolved
+valid:
+  vehicle:
+    eventId: 5b0f2a9e-1c6d-4c1e-9a0b-0d6f3e7a1b01
+    eventType: vehicle.identity.resolved
+    version: 1
+    tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    occurredAt: '2026-11-26T08:15:00Z'
+    payload:
+      canonicalId: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+      entityType: vehicle
+      entityVersion: 1
+      change: created
+      resolvedAt: '2026-11-26T08:14:59.120Z'
+      attributes:
+        modelYear: 2027
+        trim: FICTIONAL-TRIM-LX
+        plant: FICTIONAL-PLANT-01
+        buildDate: '2026-10-02'
+  componentInstance:
+    eventId: 5b0f2a9e-1c6d-4c1e-9a0b-0d6f3e7a1b02
+    eventType: vehicle.identity.resolved
+    version: 1
+    tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    occurredAt: '2026-11-26T08:15:00+01:00'
+    payload:
+      canonicalId: 1f2e3d4c-5b6a-4978-8a1b-2c3d4e5f6a7b
+      entityType: component-instance
+      entityVersion: 3
+      change: updated
+      resolvedAt: '2026-11-26T08:14:59Z'
+      attributes:
+        partNumber: FIC-PN-000123
+        supplierBatch: FIC-BATCH-2026-44
+  softwareArtifact:
+    eventId: 5b0f2a9e-1c6d-4c1e-9a0b-0d6f3e7a1b03
+    eventType: vehicle.identity.resolved
+    version: 1
+    tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    occurredAt: '2026-11-26T08:15:00Z'
+    payload:
+      canonicalId: 2a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d
+      entityType: software-artifact
+      entityVersion: 1
+      change: created
+      resolvedAt: '2026-11-26T08:14:59Z'
+      attributes:
+        ecu: FIC-ECU-BRAKE
+        firmwareVersion: 4.2.1
+        calibrationId: FIC-CAL-0099
+  configurationSnapshot:
+    eventId: 5b0f2a9e-1c6d-4c1e-9a0b-0d6f3e7a1b04
+    eventType: vehicle.identity.resolved
+    version: 1
+    tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    occurredAt: '2026-11-26T08:15:00Z'
+    payload:
+      canonicalId: 3b4c5d6e-7f8a-4b9c-8d0e-1f2a3b4c5d6e
+      entityType: configuration-snapshot
+      entityVersion: 2
+      change: updated
+      resolvedAt: '2026-11-26T08:14:59Z'
+      attributes:
+        vehicleCanonicalId: 7c9e6679-7425-40de-944b-e07fc1f90ae7
+        softwareArtifactCanonicalIds:
+          - 2a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d
+        region: FIC-EU
+invalid:
+  - name: raw VIN leaked into the vehicle attributes
+    base: vehicle
+    set: { payload.attributes.vin: FICTIONALVIN0000001 }
+  - name: vehicle without buildDate
+    base: vehicle
+    remove: [payload.attributes.buildDate]
+  - name: vehicle attributes on a software artifact
+    base: softwareArtifact
+    set: { payload.attributes: { modelYear: 2027, trim: X, plant: Y, buildDate: '2026-10-02' } }
+  - name: snapshot referencing artifacts by a raw identifier instead of a Canonical_ID
+    base: configurationSnapshot
+    set: { payload.attributes.softwareArtifactCanonicalIds: [FIC-ECU-BRAKE] }
+  - name: snapshot with an empty artifact set
+    base: configurationSnapshot
+    set: { payload.attributes.softwareArtifactCanonicalIds: [] }
+  - name: unknown entity type
+    base: vehicle
+    set: { payload.entityType: warranty-claim }
+  - name: entityVersion 0
+    base: vehicle
+    set: { payload.entityVersion: 0 }
+  - name: missing tenantId
+    base: vehicle
+    remove: [tenantId]
+  - name: legacy schemaVersion field
+    base: vehicle
+    set: { schemaVersion: 1 }
+  - name: trace context in the body
+    base: vehicle
+    set: { traceparent: 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01 }
+  - name: wrong eventType
+    base: vehicle
+    set: { eventType: firmware.change.committed }
+  - name: version 2
+    base: vehicle
+    set: { version: 2 }
+  - name: malformed occurredAt
+    base: vehicle
+    set: { occurredAt: 26/11/2026 08:15 }
+  - name: canonicalId is not a UUID
+    base: vehicle
+    set: { payload.canonicalId: VEH-1 }

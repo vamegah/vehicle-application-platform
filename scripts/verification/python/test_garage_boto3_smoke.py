@@ -60,9 +60,7 @@ class GarageBoto3Smoke(unittest.TestCase):
         cls.container.start()
         wait_for_logs(cls.container, "S3 API server listening", timeout=60)
 
-        status = cls._exec("/garage", "status")
-        node = re.search(r"([0-9a-f]{16})\s", status).group(1)
-        cls._exec("/garage", "layout", "assign", "-z", "dc1", "-c", "1G", node)
+        cls._exec("/garage", "layout", "assign", "-z", "dc1", "-c", "1G", cls._await_node_id())
         cls._exec("/garage", "layout", "apply", "--version", "1")
         cls._exec("/garage", "bucket", "create", BUCKET)
         key = cls._exec("/garage", "key", "create", "smoke")
@@ -71,6 +69,21 @@ class GarageBoto3Smoke(unittest.TestCase):
         cls._exec("/garage", "bucket", "allow", "--read", "--write", "--owner", BUCKET, "--key", "smoke")
         time.sleep(2)
         cls.url = f"http://{cls.container.get_container_host_ip()}:{cls.container.get_exposed_port(3900)}"
+
+    @classmethod
+    def _await_node_id(cls) -> str:
+        # Garage can accept connections before it has written its node key, and an early `garage status`
+        # then fails with "Unable to read node key" (seen on a slow CI runner). Retry for at most 60 s.
+        deadline = time.monotonic() + 60
+        text = ""
+        while time.monotonic() < deadline:
+            code, out = cls.container.exec(["/garage", "status"])
+            text = out.decode() if isinstance(out, bytes) else str(out)
+            match = re.search(r"([0-9a-f]{16})\s", text) if code == 0 else None
+            if match:
+                return match.group(1)
+            time.sleep(0.5)
+        raise AssertionError("Garage node did not report its ID within 60 s: " + SECRET_RE.sub(r"\1***", text))
 
     @classmethod
     def _exec(cls, *cmd: str) -> str:
