@@ -1,0 +1,90 @@
+// Configuration validation gRPC contract of the configuration-assurance bounded context (task 2.3).
+//
+// Latency-sensitive callers request validation of a Canonical_Configuration_Snapshot over gRPC
+// (Req 7.6: 500 ms at the 95th percentile for up to 100 ECUs). The result has the same content as the
+// config.validation.completed event (contracts/asyncapi/configuration-assurance.yaml).
+//
+// Tenant and principal (Req 7.9, security.md): every request carries tenant_id. The caller's signed
+// Internal_Principal travels in the call metadata key "x-internal-principal" and W3C trace context in
+// "traceparent" and "tracestate". The server interceptor verifies the principal and returns
+// PERMISSION_DENIED, and publishes audit.event.recorded, when tenant_id differs from the principal's
+// tenant. A missing or invalid principal returns UNAUTHENTICATED. An unknown snapshot returns NOT_FOUND
+// with the same message whether the snapshot is missing or belongs to another tenant.
+//
+// Versioning: this package is v1 and is never mutated incompatibly; a breaking change needs a v2
+// package (Req 13.11). CI enforces it with buf lint and buf breaking.
+syntax = "proto3";
+
+package autoreliance.configuration.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_outer_classname = "ConfigValidationProto";
+option java_package = "com.autoreliance.contracts.configuration.v1";
+
+// Validates configuration snapshots against the tenant's enabled rule set.
+service ConfigValidationService {
+  // Evaluates one snapshot. Deterministic for a given snapshot and rule-set version (Req 7.7).
+  rpc ValidateConfiguration(ValidateConfigurationRequest) returns (ValidateConfigurationResponse);
+}
+
+message ValidateConfigurationRequest {
+  // Tenant of the snapshot. Must equal the tenant of the Internal_Principal in the call metadata.
+  string tenant_id = 1;
+  // Canonical_ID (UUID) of the Canonical_Configuration_Snapshot to evaluate.
+  string snapshot_canonical_id = 2;
+  // Optional rule-set version to evaluate against. Empty means the tenant's active rule set.
+  string rule_set_version = 3;
+}
+
+message ValidateConfigurationResponse {
+  // Identifier of the stored validation result.
+  string validation_result_id = 1;
+  // Canonical_ID of the evaluated snapshot.
+  string snapshot_canonical_id = 2;
+  // Version of the rule set used (Req 7.8).
+  string rule_set_version = 3;
+  // FAIL when any rule failed; otherwise NOT_EVALUABLE when any rule was not evaluable; otherwise PASS.
+  ValidationStatus overall_status = 4;
+  // Identifiers of the failed rules (Req 7.4).
+  repeated string failed_rule_ids = 5;
+  // One result per evaluated rule (Req 7.3).
+  repeated RuleResult rule_results = 6;
+  // Time the evaluation finished.
+  google.protobuf.Timestamp evaluated_at = 7;
+}
+
+// Result of one rule.
+message RuleResult {
+  // Identifier of this rule result, cited by configuration.risk.scored.
+  string rule_result_id = 1;
+  // Identifier of the rule.
+  string rule_id = 2;
+  // Rule family (Req 7.2).
+  RuleCategory rule_category = 3;
+  // A rule with missing data is NOT_EVALUABLE, never PASS (Req 7.5).
+  ValidationStatus status = 4;
+  // Canonical_IDs of the entities that make the rule fail (Req 7.3). Non-empty when status is FAIL.
+  repeated string offending_entity_canonical_ids = 5;
+  // The data that was missing (Req 7.5). Non-empty when status is NOT_EVALUABLE.
+  repeated string missing_data = 6;
+}
+
+enum ValidationStatus {
+  VALIDATION_STATUS_UNSPECIFIED = 0;
+  VALIDATION_STATUS_PASS = 1;
+  VALIDATION_STATUS_FAIL = 2;
+  VALIDATION_STATUS_NOT_EVALUABLE = 3;
+}
+
+// The six Phase 1 rule families (Req 7.2).
+enum RuleCategory {
+  RULE_CATEGORY_UNSPECIFIED = 0;
+  RULE_CATEGORY_HARDWARE_REVISION_COMPATIBILITY = 1;
+  RULE_CATEGORY_FIRMWARE_DEPENDENCY = 2;
+  RULE_CATEGORY_COMMUNICATION_PROTOCOL = 3;
+  RULE_CATEGORY_REGIONAL_CONFIGURATION = 4;
+  RULE_CATEGORY_CALIBRATION_PRESENCE = 5;
+  RULE_CATEGORY_PROGRAMMING_READINESS = 6;
+}
