@@ -59,7 +59,8 @@ class GoldenExamples(unittest.TestCase):
                       "config.validation.completed", "test.result.recorded", "release.evidence.gap.detected",
                       "audit.event.recorded", "dlt.legacy-integration-extraction",
                       "integration.risk.scored", "configuration.risk.scored", "release.risk.scored",
-                      "document.text.extracted"):
+                      "document.text.extracted", "erp.masterdata.changed", "erp.purchaseorder.updated",
+                      "mes.workorder.reported", "mes.quality.inspection.recorded"):
             self.assertIn(topic, names)
 
     def test_valid_samples_pass_and_mutations_fail(self):

@@ -39,6 +39,14 @@ info:
     body.
   x-phase: 1
   x-owner-context: legacy-integration
+  # Deterministic eventId (RFC 9562 UUIDv5, SHA-1), the consumer idempotency key. The name is the UTF-8 string
+  # below with each field exactly as it appears in the envelope, joined with "|". The same namespace is used by
+  # the four ERP and MES topics; eventType in the name keeps their IDs apart. contentHash is the SHA-256
+  # (lowercase hex) of the RFC 8785 canonical JSON of payload. Checked by contracts/tests/erp_mes_rules.py.
+  x-event-id:
+    algorithm: uuid5
+    namespace: 5aebf2d8-b259-40a3-a845-8395f935e626
+    name: '{tenantId}|{eventType}|{naturalKey}|{contentHash}|{extractedAt}'
   x-naming-exception: four-segment topic name approved in ADR-011
 defaultContentType: application/json
 servers:
@@ -157,13 +165,13 @@ components:
           type: string
           minLength: 3
           maxLength: 512
-          pattern: '^[^|]+(\|[^|]+){1,5}$'
+          pattern: '^[^|]+\|[^|]+\|[^|]+$'
           description: >-
             Built by the connector from named source columns, never supplied by the
             source. Composition: <sourceSystem>|<PLANT_CD>|<INSPECTION_ID> (fictional MES
             columns mapped by the Anti_Corruption_Layer). Segments are trimmed,
             case-preserved, and percent-encoded for the characters | and %. An empty
-            segment makes the ACL reject the record.
+            segment makes the ACL reject the record. The third segment equals payload.inspectionId, percent-encoded.
         contentHash:
           type: string
           pattern: '^[0-9a-f]{64}$'

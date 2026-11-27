@@ -1,0 +1,222 @@
+# Base events for the four ERP and MES golden files (task 2.9). Not a golden file itself (leading underscore).
+# contracts/tests/build_erp_mes_golden.py computes contentHash and eventId from these and writes the golden
+# files, so the golden examples always satisfy erp_mes_rules.py. All values are fictional.
+erp.masterdata.changed:
+  message: ErpMasterdataChanged
+  valid:
+    part:
+      eventType: erp.masterdata.changed
+      version: 1
+      tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+      occurredAt: '2026-11-26T07:00:00Z'
+      sourceSystem: FIC-ERP
+      naturalKey: FIC-ERP|part|FIC-PN-000123|FIC-PLANT-01
+      extractedAt: '2026-11-26T06:59:58Z'
+      sourceRecordVersion: 7
+      payload:
+        masterDataType: part
+        changeType: updated
+        changedAt: '2026-11-26T06:55:00Z'
+        partNumber: FIC-PN-000123
+        description: FICTIONAL brake pressure sensor
+        hardwareRevision: FIC-HW-B
+        effectiveFrom: '2026-12-01'
+    supplierWithoutRecordVersion:
+      eventType: erp.masterdata.changed
+      version: 1
+      tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+      occurredAt: '2026-11-26T07:00:00Z'
+      sourceSystem: FIC-ERP
+      naturalKey: FIC-ERP|supplier|FIC-SUP-042|FIC-CO-1
+      extractedAt: '2026-11-26T06:59:58Z'
+      payload:
+        masterDataType: supplier
+        changeType: created
+        changedAt: '2026-11-26T06:50:00Z'
+        supplierCode: FIC-SUP-042
+        description: FICTIONAL Tier-1 supplier
+  invalid:
+    - name: part master data without partNumber
+      base: part
+      remove: [payload.partNumber]
+    - name: supplier master data without supplierCode
+      base: supplierWithoutRecordVersion
+      remove: [payload.supplierCode]
+    - name: naturalKey with an unknown record kind
+      base: part
+      set: { naturalKey: FIC-ERP|material|FIC-PN-000123|FIC-PLANT-01 }
+    - name: naturalKey with a missing segment
+      base: part
+      set: { naturalKey: FIC-ERP|part|FIC-PN-000123 }
+erp.purchaseorder.updated:
+  message: ErpPurchaseorderUpdated
+  valid:
+    order:
+      eventType: erp.purchaseorder.updated
+      version: 1
+      tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+      occurredAt: '2026-11-26T07:05:00Z'
+      sourceSystem: FIC-ERP
+      naturalKey: FIC-ERP|FIC-PO-77001
+      extractedAt: '2026-11-26T07:04:58Z'
+      sourceRecordVersion: 3
+      payload:
+        purchaseOrderNumber: FIC-PO-77001
+        supplierCode: FIC-SUP-042
+        status: partially-delivered
+        lines:
+          - lineNumber: 1
+            partNumber: FIC-PN-000123
+            supplierBatch: FIC-BATCH-2026-44
+            quantityOrdered: 500
+            quantityDelivered: 200
+        updatedAt: '2026-11-26T07:00:00Z'
+    orderWithoutRecordVersion:
+      eventType: erp.purchaseorder.updated
+      version: 1
+      tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+      occurredAt: '2026-11-26T07:05:00Z'
+      sourceSystem: FIC-ERP
+      naturalKey: FIC-ERP|FIC-PO-77002
+      extractedAt: '2026-11-26T07:04:58Z'
+      payload:
+        purchaseOrderNumber: FIC-PO-77002
+        supplierCode: FIC-SUP-042
+        status: open
+        lines:
+          - lineNumber: 1
+            partNumber: FIC-PN-000124
+            quantityOrdered: 10
+            quantityDelivered: 0
+        updatedAt: '2026-11-26T07:00:00Z'
+  invalid:
+    - name: purchase order with no lines
+      base: order
+      set: { payload.lines: [] }
+    - name: line with quantityOrdered 0
+      base: order
+      set: { payload.lines.0.quantityOrdered: 0 }
+    - name: naturalKey with an extra segment
+      base: order
+      set: { naturalKey: FIC-ERP|FIC-PO-77001|1 }
+mes.workorder.reported:
+  message: MesWorkorderReported
+  valid:
+    completed:
+      eventType: mes.workorder.reported
+      version: 1
+      tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+      occurredAt: '2026-11-26T08:00:00Z'
+      sourceSystem: FIC-MES
+      naturalKey: FIC-MES|FIC-PLANT-01|FIC-WO-30001
+      extractedAt: '2026-11-26T07:59:58Z'
+      payload:
+        workOrderNumber: FIC-WO-30001
+        plant: FIC-PLANT-01
+        vin: FCTVN000000000017
+        status: completed
+        installedSoftware:
+          - ecu: FIC-ECU-BRAKE
+            firmwareVersion: 4.3.0
+            calibrationId: FIC-CAL-0099
+        reportedAt: '2026-11-26T07:58:00Z'
+    withRecordVersion:
+      eventType: mes.workorder.reported
+      version: 1
+      tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+      occurredAt: '2026-11-26T08:00:00Z'
+      sourceSystem: FIC-MES
+      naturalKey: FIC-MES|FIC-PLANT-01|FIC-WO-30002
+      extractedAt: '2026-11-26T07:59:58Z'
+      sourceRecordVersion: 12
+      payload:
+        workOrderNumber: FIC-WO-30002
+        plant: FIC-PLANT-01
+        vin: FCTVN000000000025
+        status: in-progress
+        reportedAt: '2026-11-26T07:58:00Z'
+  invalid:
+    - name: malformed VIN (letter O is not allowed)
+      base: completed
+      set: { payload.vin: FCTVN00000000O017 }
+    - name: VIN that is too short
+      base: completed
+      set: { payload.vin: FCTVN0001 }
+    - name: installed software without calibrationId
+      base: completed
+      remove: [payload.installedSoftware.0.calibrationId]
+    - name: unknown work order status
+      base: completed
+      set: { payload.status: paused }
+mes.quality.inspection.recorded:
+  message: MesQualityInspectionRecorded
+  valid:
+    failedWithDefects:
+      eventType: mes.quality.inspection.recorded
+      version: 1
+      tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+      occurredAt: '2026-11-26T08:10:00Z'
+      sourceSystem: FIC-MES
+      naturalKey: FIC-MES|FIC-PLANT-01|FIC-INSP-9001
+      extractedAt: '2026-11-26T08:09:58Z'
+      payload:
+        inspectionId: FIC-INSP-9001
+        workOrderNumber: FIC-WO-30001
+        vin: FCTVN000000000017
+        station: FIC-EOL-03
+        result: fail
+        defects:
+          - defectCode: FIC-DEF-117
+            severity: major
+        inspectedAt: '2026-11-26T08:08:00Z'
+    passWithoutVin:
+      eventType: mes.quality.inspection.recorded
+      version: 1
+      tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+      occurredAt: '2026-11-26T08:10:00Z'
+      sourceSystem: FIC-MES
+      naturalKey: FIC-MES|FIC-PLANT-01|FIC-INSP-9002
+      extractedAt: '2026-11-26T08:09:58Z'
+      sourceRecordVersion: 1
+      payload:
+        inspectionId: FIC-INSP-9002
+        workOrderNumber: FIC-WO-30002
+        station: FIC-EOL-03
+        result: pass
+        inspectedAt: '2026-11-26T08:08:00Z'
+  invalid:
+    - name: unknown inspection result
+      base: failedWithDefects
+      set: { payload.result: inconclusive }
+    - name: defect with an unknown severity
+      base: failedWithDefects
+      set: { payload.defects.0.severity: cosmetic }
+    - name: malformed VIN
+      base: failedWithDefects
+      set: { payload.vin: not-a-vin }
+# Mutations applied to every topic (the first valid sample is the base).
+common_invalid:
+  - name: missing sourceSystem
+    remove: [sourceSystem]
+  - name: missing naturalKey
+    remove: [naturalKey]
+  - name: missing contentHash
+    remove: [contentHash]
+  - name: missing extractedAt
+    remove: [extractedAt]
+  - name: empty naturalKey segment
+    set: { naturalKey: 'FIC-SRC||X' }
+  - name: malformed contentHash
+    set: { contentHash: ABCDEF }
+  - name: unknown payload field such as a raw legacy field name
+    set: { payload.MATNR_LEGACY: FIC-PN-000123 }
+  - name: the retired hash-based key field
+    set: { sourceNaturalKeyHash: 0000000000000000000000000000000000000000000000000000000000000000 }
+  - name: sourceRecordVersion 0
+    set: { sourceRecordVersion: 0 }
+  - name: version 2
+    set: { version: 2 }
+  - name: wrong eventType
+    set: { eventType: document.text.extracted }
+  - name: trace context in the body
+    set: { traceparent: 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01 }

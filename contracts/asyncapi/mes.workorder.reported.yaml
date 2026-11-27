@@ -35,6 +35,14 @@ info:
     record headers, not in the body.
   x-phase: 1
   x-owner-context: legacy-integration
+  # Deterministic eventId (RFC 9562 UUIDv5, SHA-1), the consumer idempotency key. The name is the UTF-8 string
+  # below with each field exactly as it appears in the envelope, joined with "|". The same namespace is used by
+  # the four ERP and MES topics; eventType in the name keeps their IDs apart. contentHash is the SHA-256
+  # (lowercase hex) of the RFC 8785 canonical JSON of payload. Checked by contracts/tests/erp_mes_rules.py.
+  x-event-id:
+    algorithm: uuid5
+    namespace: 5aebf2d8-b259-40a3-a845-8395f935e626
+    name: '{tenantId}|{eventType}|{naturalKey}|{contentHash}|{extractedAt}'
 defaultContentType: application/json
 servers:
   kafka:
@@ -152,13 +160,13 @@ components:
           type: string
           minLength: 3
           maxLength: 512
-          pattern: '^[^|]+(\|[^|]+){1,5}$'
+          pattern: '^[^|]+\|[^|]+\|[^|]+$'
           description: >-
             Built by the connector from named source columns, never supplied by the
             source. Composition: <sourceSystem>|<PLANT_CD>|<WO_NO> (fictional MES columns
             mapped by the Anti_Corruption_Layer). Segments are trimmed, case-preserved,
             and percent-encoded for the characters | and %. An empty segment makes the ACL
-            reject the record.
+            reject the record. The second segment equals payload.plant and the third equals payload.workOrderNumber, percent-encoded.
         contentHash:
           type: string
           pattern: '^[0-9a-f]{64}$'

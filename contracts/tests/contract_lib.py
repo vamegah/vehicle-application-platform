@@ -252,4 +252,4 @@ def apply_mutation(base, mutation: dict):
 
 
 def golden_files() -> list[Path]:
-    return sorted((Path(__file__).parent / "golden").glob("*.yaml"))
+    return sorted(p for p in (Path(__file__).parent / "golden").glob("*.yaml") if not p.name.startswith("_"))
