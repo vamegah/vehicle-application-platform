@@ -1,0 +1,12 @@
+# Redocly CLI configuration for the OpenAPI contracts (task 2.4). @redocly/cli is pinned in
+# contracts/package.json and DEPENDENCIES.lock.md (approved by the user on 2026-11-26).
+# `redocly lint` validates OpenAPI 3.1 structure and runs the recommended ruleset; CI fails on any error or
+# warning. The repository-specific API standards (tenant ID only in /admin/ paths, /admin/ security and audit
+# extension, base path, envelope, Problem Details, cursor pagination) are enforced by
+# contracts/tests/openapi_lint.py, because they need cross-file $ref resolution and path context.
+extends:
+  - recommended
+rules:
+  # Internal health probes answer only 200 or 503. openapi_lint.py instead requires 400, 401, 403 and 504 on
+  # every non-health operation, 404 on every operation with a path ID, and 413 on every request body.
+  operation-4xx-response: off

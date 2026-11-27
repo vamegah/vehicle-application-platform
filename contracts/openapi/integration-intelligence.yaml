@@ -1,0 +1,495 @@
+openapi: 3.1.0
+info:
+  title: AutoReliance AI integration-intelligence API
+  version: 1.0.0
+  description: |
+    REST contract of the integration-intelligence bounded context (Java/Spring Boot, Neo4j, integration-config
+    deployable): firmware change submission, the computed dependency impact with the path that explains each
+    entry, the integration risk score, and a read of the graph facts of a configuration snapshot (Req 5, 6).
+    All values in examples are fictional.
+
+    The gRPC graph facts contract (contracts/proto/integration-intelligence/graph_facts.proto) is the one used
+    by configuration-assurance; the REST read here serves gateway clients.
+
+    Standards (api-standards.md): base path /api/v1/integration-intelligence/, envelope { data, meta },
+    Problem Details errors, cursor-only pagination. The tenant comes from the authenticated principal.
+  license:
+    name: Proprietary
+    identifier: LicenseRef-AutoReliance-Proprietary
+servers:
+  - url: https://gateway.autoreliance.example
+    description: API gateway
+tags:
+  - name: firmware-changes
+    description: Firmware changes, their impact, and their integration risk
+  - name: graph
+    description: Dependency_Graph reads
+  - name: operations
+    description: Internal health
+security:
+  - tenantPrincipal: [firmware-engineer]
+paths:
+  /api/v1/integration-intelligence/firmware-changes:
+    post:
+      operationId: integrationSubmitFirmwareChange
+      summary: Submit a firmware change
+      description: |
+        Records the change and publishes firmware.change.committed (Req 5.1). The impact is computed
+        asynchronously; read it from the impact endpoint.
+      tags: [firmware-changes]
+      security:
+        - tenantPrincipal: [firmware-engineer, release-manager]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FirmwareChangeSubmission'
+      responses:
+        '201':
+          description: The recorded firmware change.
+          headers:
+            Location:
+              description: URL of the new firmware change.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FirmwareChangeEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '404':
+          $ref: './common/components.yaml#/components/responses/Problem404'
+        '413':
+          $ref: './common/components.yaml#/components/responses/Problem413'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+    get:
+      operationId: integrationListFirmwareChanges
+      summary: Firmware changes, newest first
+      tags: [firmware-changes]
+      security:
+        - tenantPrincipal: [firmware-engineer, release-manager, configuration-engineer, auditor]
+      parameters:
+        - $ref: './common/components.yaml#/components/parameters/Cursor'
+        - $ref: './common/components.yaml#/components/parameters/Limit'
+        - name: artifactCanonicalId
+          in: query
+          required: false
+          schema:
+            $ref: './common/components.yaml#/components/schemas/CanonicalId'
+      responses:
+        '200':
+          description: One page of firmware changes.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FirmwareChangeListEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/integration-intelligence/firmware-changes/{firmwareChangeId}:
+    get:
+      operationId: integrationGetFirmwareChange
+      summary: One firmware change
+      tags: [firmware-changes]
+      security:
+        - tenantPrincipal: [firmware-engineer, release-manager, configuration-engineer, auditor]
+      parameters:
+        - $ref: '#/components/parameters/FirmwareChangeId'
+      responses:
+        '200':
+          description: The firmware change.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FirmwareChangeEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '404':
+          $ref: './common/components.yaml#/components/responses/Problem404'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/integration-intelligence/firmware-changes/{firmwareChangeId}/impact:
+    get:
+      operationId: integrationGetImpact
+      summary: Dependency impact of a firmware change
+      description: |
+        Every affected entity with the dependency path that explains it and its depth (Req 5.4). truncated is
+        true when the configured maximum depth was reached (Req 5.5). 404 when the impact has not been
+        computed, including when the changed artifact does not exist in the Dependency_Graph (Req 5.7).
+      tags: [firmware-changes]
+      security:
+        - tenantPrincipal: [firmware-engineer, release-manager, configuration-engineer, auditor]
+      parameters:
+        - $ref: '#/components/parameters/FirmwareChangeId'
+      responses:
+        '200':
+          description: The computed impact.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImpactEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '404':
+          $ref: './common/components.yaml#/components/responses/Problem404'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/integration-intelligence/firmware-changes/{firmwareChangeId}/risk-score:
+    get:
+      operationId: integrationGetRiskScore
+      summary: Integration risk score of a firmware change
+      description: |
+        A model-generated estimate that requires human review, with contributing factors, their weights, and
+        citations (Req 6.2, 6.5, 18.1).
+      tags: [firmware-changes]
+      security:
+        - tenantPrincipal: [firmware-engineer, release-manager, auditor]
+      parameters:
+        - $ref: '#/components/parameters/FirmwareChangeId'
+      responses:
+        '200':
+          description: The integration risk score.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegrationRiskScoreEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '404':
+          $ref: './common/components.yaml#/components/responses/Problem404'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/integration-intelligence/configuration-snapshots/{snapshotCanonicalId}/graph-facts:
+    get:
+      operationId: integrationGetSnapshotGraphFacts
+      summary: Graph facts of a configuration snapshot
+      description: Read-only. The same content as the gRPC GraphFactsService (autoreliance.integration.v1).
+      tags: [graph]
+      security:
+        - tenantPrincipal: [configuration-engineer, firmware-engineer]
+      parameters:
+        - name: snapshotCanonicalId
+          in: path
+          required: true
+          schema:
+            $ref: './common/components.yaml#/components/schemas/CanonicalId'
+        - name: maxDepth
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 20
+      responses:
+        '200':
+          description: Nodes and relationships of the snapshot's neighborhood.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GraphFactsEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '404':
+          $ref: './common/components.yaml#/components/responses/Problem404'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/integration-intelligence/health:
+    get:
+      operationId: integrationIntelligenceHealth
+      summary: Liveness of the integration-intelligence context (internal)
+      description: Internal liveness probe. Not routed by the gateway.
+      tags: [operations]
+      x-internal-only: true
+      x-health-check: true
+      security: []
+      responses:
+        '200':
+          description: The context is up.
+          content:
+            application/json:
+              schema:
+                $ref: './common/components.yaml#/components/schemas/Health'
+        '503':
+          $ref: './common/components.yaml#/components/responses/Problem503'
+components:
+  securitySchemes:
+    tenantPrincipal:
+      $ref: './common/components.yaml#/components/securitySchemes/tenantPrincipal'
+  parameters:
+    FirmwareChangeId:
+      name: firmwareChangeId
+      in: path
+      required: true
+      schema:
+        $ref: './common/components.yaml#/components/schemas/CanonicalId'
+  schemas:
+    FirmwareChangeSubmission:
+      type: object
+      additionalProperties: false
+      required: [artifactCanonicalId, previousVersion, newVersion]
+      properties:
+        artifactCanonicalId:
+          $ref: './common/components.yaml#/components/schemas/CanonicalId'
+        previousVersion:
+          type: string
+          minLength: 1
+          maxLength: 64
+        newVersion:
+          type: string
+          minLength: 1
+          maxLength: 64
+        commitId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        firmwareBuildId:
+          type: string
+          minLength: 1
+          maxLength: 128
+    FirmwareChange:
+      type: object
+      additionalProperties: false
+      required: [firmwareChangeId, artifactCanonicalId, previousVersion, newVersion, origin, committedAt, impactStatus]
+      properties:
+        firmwareChangeId:
+          $ref: './common/components.yaml#/components/schemas/CanonicalId'
+        artifactCanonicalId:
+          $ref: './common/components.yaml#/components/schemas/CanonicalId'
+        previousVersion:
+          type: string
+        newVersion:
+          type: string
+        origin:
+          type: string
+          enum: [gateway, connector]
+        committedAt:
+          type: string
+          format: date-time
+        commitId:
+          type: [string, 'null']
+        firmwareBuildId:
+          type: [string, 'null']
+        impactStatus:
+          type: string
+          enum: [pending, computed, artifact-not-found]
+    AffectedEntity:
+      type: object
+      additionalProperties: false
+      required: [canonicalId, entityType, depth, path]
+      properties:
+        canonicalId:
+          $ref: './common/components.yaml#/components/schemas/CanonicalId'
+        entityType:
+          type: string
+          enum: [ecu, firmware-version, calibration-file, sensor, cloud-service, configuration-snapshot]
+        depth:
+          type: integer
+          minimum: 1
+        path:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [fromCanonicalId, relationship, toCanonicalId]
+            properties:
+              fromCanonicalId:
+                $ref: './common/components.yaml#/components/schemas/CanonicalId'
+              relationship:
+                type: string
+                enum: [depends-on, communicates-with, calibrated-by, installed-on]
+              toCanonicalId:
+                $ref: './common/components.yaml#/components/schemas/CanonicalId'
+    Impact:
+      type: object
+      additionalProperties: false
+      required: [impactResultId, firmwareChangeId, changedArtifactCanonicalId, maxDepth, truncated, computedAt, affected]
+      properties:
+        impactResultId:
+          $ref: './common/components.yaml#/components/schemas/CanonicalId'
+        firmwareChangeId:
+          $ref: './common/components.yaml#/components/schemas/CanonicalId'
+        changedArtifactCanonicalId:
+          $ref: './common/components.yaml#/components/schemas/CanonicalId'
+        maxDepth:
+          type: integer
+          minimum: 1
+        truncated:
+          type: boolean
+        computedAt:
+          type: string
+          format: date-time
+        affected:
+          type: array
+          items:
+            $ref: '#/components/schemas/AffectedEntity'
+    RiskFactor:
+      type: object
+      additionalProperties: false
+      required: [name, weight, available]
+      properties:
+        name:
+          type: string
+        weight:
+          type: number
+          minimum: 0
+        contribution:
+          type: [number, 'null']
+          minimum: 0
+        available:
+          type: boolean
+        citations:
+          type: array
+          items:
+            $ref: './common/components.yaml#/components/schemas/Citation'
+    IntegrationRiskScore:
+      allOf:
+        - $ref: './common/components.yaml#/components/schemas/AiOutputLabels'
+        - type: object
+          required: [firmwareChangeId, artifactCanonicalId, score, confidence, estimate, modelVersion, factors, computedAt]
+          properties:
+            firmwareChangeId:
+              $ref: './common/components.yaml#/components/schemas/CanonicalId'
+            artifactCanonicalId:
+              $ref: './common/components.yaml#/components/schemas/CanonicalId'
+            score:
+              type: number
+              minimum: 0
+              maximum: 100
+            confidence:
+              type: number
+              minimum: 0
+              maximum: 1
+            modelVersion:
+              type: string
+            factors:
+              type: array
+              items:
+                $ref: '#/components/schemas/RiskFactor'
+            computedAt:
+              type: string
+              format: date-time
+    GraphFacts:
+      type: object
+      additionalProperties: false
+      required: [snapshotCanonicalId, nodes, relationships, truncated, graphVersion]
+      properties:
+        snapshotCanonicalId:
+          $ref: './common/components.yaml#/components/schemas/CanonicalId'
+        nodes:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [canonicalId, nodeType, entityVersion, attributes]
+            properties:
+              canonicalId:
+                $ref: './common/components.yaml#/components/schemas/CanonicalId'
+              nodeType:
+                type: string
+                enum: [ecu, firmware-version, calibration-file, sensor, cloud-service, software-artifact]
+              entityVersion:
+                type: integer
+                minimum: 1
+              attributes:
+                type: object
+                additionalProperties:
+                  type: string
+        relationships:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [fromCanonicalId, relationshipType, toCanonicalId]
+            properties:
+              fromCanonicalId:
+                $ref: './common/components.yaml#/components/schemas/CanonicalId'
+              relationshipType:
+                type: string
+                enum: [depends-on, communicates-with, calibrated-by, installed-on]
+              toCanonicalId:
+                $ref: './common/components.yaml#/components/schemas/CanonicalId'
+              attributes:
+                type: object
+                additionalProperties:
+                  type: string
+        truncated:
+          type: boolean
+        graphVersion:
+          type: integer
+          minimum: 0
+    FirmwareChangeEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/FirmwareChange'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/Meta'
+    FirmwareChangeListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/FirmwareChange'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/ListMeta'
+    ImpactEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/Impact'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/Meta'
+    IntegrationRiskScoreEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/IntegrationRiskScore'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/Meta'
+    GraphFactsEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/GraphFacts'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/Meta'

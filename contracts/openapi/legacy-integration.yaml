@@ -1,0 +1,379 @@
+openapi: 3.1.0
+info:
+  title: AutoReliance AI legacy-integration API
+  version: 1.0.0
+  description: |
+    REST contract of the legacy-integration bounded context (Java connector runtime, data-platform deployable):
+    connector status, connector runs, and operator document-status endpoints (Req 3). All values in examples
+    are fictional.
+
+    There is no text-extraction operation and no operation called by data-readiness (ADR-008, ADR-024). PDF
+    text reaches data-readiness only through the document.text.extracted event. Document endpoints return
+    metadata and extraction status only: never PDF bytes and never extracted text (Req 3.16). Connector runs
+    are scheduled (ADR-009); this API reads them and does not start them.
+
+    The operator routes GET /admin/v1/layout/{tenantId} (aggregate read-back, owned by this context) and the
+    internal GET /admin/v1/layout-cache/{tenantId} are defined in admin.yaml and referenced here.
+
+    Standards (api-standards.md): base path /api/v1/legacy-integration/, envelope { data, meta }, Problem
+    Details errors, cursor-only pagination. The tenant comes from the authenticated principal.
+  license:
+    name: Proprietary
+    identifier: LicenseRef-AutoReliance-Proprietary
+servers:
+  - url: https://gateway.autoreliance.example
+    description: API gateway
+tags:
+  - name: connectors
+    description: Configured connectors and their runs
+  - name: documents
+    description: Discovered documents and their extraction status
+  - name: operations
+    description: Internal health and admin routes
+security:
+  - tenantPrincipal: [data-engineer]
+paths:
+  /api/v1/legacy-integration/connectors:
+    get:
+      operationId: legacyIntegrationListConnectors
+      summary: Connectors configured for the tenant
+      tags: [connectors]
+      security:
+        - tenantPrincipal: [data-engineer, tenant-administrator]
+      parameters:
+        - $ref: './common/components.yaml#/components/parameters/Cursor'
+        - $ref: './common/components.yaml#/components/parameters/Limit'
+      responses:
+        '200':
+          description: One page of connectors.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorListEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/legacy-integration/connector-runs:
+    get:
+      operationId: legacyIntegrationListConnectorRuns
+      summary: Connector runs, newest first
+      tags: [connectors]
+      security:
+        - tenantPrincipal: [data-engineer, tenant-administrator, auditor]
+      parameters:
+        - $ref: './common/components.yaml#/components/parameters/Cursor'
+        - $ref: './common/components.yaml#/components/parameters/Limit'
+        - name: connectorName
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ConnectorName'
+      responses:
+        '200':
+          description: One page of connector runs.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorRunListEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/legacy-integration/connector-runs/{runId}:
+    get:
+      operationId: legacyIntegrationGetConnectorRun
+      summary: One connector run
+      tags: [connectors]
+      security:
+        - tenantPrincipal: [data-engineer, tenant-administrator, auditor]
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          schema:
+            $ref: './common/components.yaml#/components/schemas/CanonicalId'
+      responses:
+        '200':
+          description: The connector run.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConnectorRunEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '404':
+          $ref: './common/components.yaml#/components/responses/Problem404'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/legacy-integration/documents:
+    get:
+      operationId: legacyIntegrationListDocuments
+      summary: Discovered documents and their extraction status
+      tags: [documents]
+      security:
+        - tenantPrincipal: [data-engineer]
+      parameters:
+        - $ref: './common/components.yaml#/components/parameters/Cursor'
+        - $ref: './common/components.yaml#/components/parameters/Limit'
+        - name: status
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ExtractionStatus'
+      responses:
+        '200':
+          description: One page of documents.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentListEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/legacy-integration/documents/{documentId}:
+    get:
+      operationId: legacyIntegrationGetDocument
+      summary: Metadata and extraction status of one document
+      tags: [documents]
+      security:
+        - tenantPrincipal: [data-engineer]
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            $ref: './common/components.yaml#/components/schemas/CanonicalId'
+      responses:
+        '200':
+          description: The document metadata. Never the PDF bytes or the extracted text.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '404':
+          $ref: './common/components.yaml#/components/responses/Problem404'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/legacy-integration/health:
+    get:
+      operationId: legacyIntegrationHealth
+      summary: Liveness of the legacy-integration context (internal)
+      description: Internal liveness probe. Not routed by the gateway.
+      tags: [operations]
+      x-internal-only: true
+      x-health-check: true
+      security: []
+      responses:
+        '200':
+          description: The context is up.
+          content:
+            application/json:
+              schema:
+                $ref: './common/components.yaml#/components/schemas/Health'
+        '503':
+          $ref: './common/components.yaml#/components/responses/Problem503'
+  /admin/v1/layout/{tenantId}:
+    $ref: './admin.yaml#/paths/~1admin~1v1~1layout~1{tenantId}'
+  /admin/v1/layout-cache/{tenantId}:
+    $ref: './admin.yaml#/paths/~1admin~1v1~1layout-cache~1{tenantId}'
+components:
+  securitySchemes:
+    tenantPrincipal:
+      $ref: './common/components.yaml#/components/securitySchemes/tenantPrincipal'
+    platformOperator:
+      $ref: './common/components.yaml#/components/securitySchemes/platformOperator'
+  schemas:
+    ConnectorName:
+      type: string
+      pattern: '^[a-z][a-z0-9-]{1,63}$'
+    ExtractionStatus:
+      type: string
+      enum: [queued, running, extracted, failed]
+    Connector:
+      type: object
+      additionalProperties: false
+      required: [connectorName, kind, enabled, schedule]
+      properties:
+        connectorName:
+          $ref: '#/components/schemas/ConnectorName'
+        kind:
+          type: string
+          enum: [erp, mes, document, azure-devops, jenkins, sample]
+        enabled:
+          type: boolean
+        schedule:
+          type: string
+          description: Polling schedule (Spring cron expression). Runs on the single legacy-integration replica (ADR-009).
+        lastRunAt:
+          type: [string, 'null']
+          format: date-time
+        lastOutcome:
+          oneOf:
+            - $ref: '#/components/schemas/RunOutcome'
+            - type: 'null'
+    RunOutcome:
+      type: string
+      enum: [succeeded, partially-succeeded, failed]
+    ConnectorRun:
+      type: object
+      additionalProperties: false
+      required: [runId, connectorName, startedAt, outcome, counts]
+      properties:
+        runId:
+          $ref: './common/components.yaml#/components/schemas/CanonicalId'
+        connectorName:
+          $ref: '#/components/schemas/ConnectorName'
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: [string, 'null']
+          format: date-time
+        outcome:
+          oneOf:
+            - $ref: '#/components/schemas/RunOutcome'
+            - type: string
+              const: running
+        resumedFromCheckpoint:
+          type: boolean
+          description: True when the run resumed from a stored checkpoint after an interruption (Req 3.3).
+        failureReason:
+          type: [string, 'null']
+          description: Final connection failure after the retry limit (Req 3.4). Never contains a credential.
+        counts:
+          type: object
+          additionalProperties: false
+          required: [read, published, unchanged, rejected]
+          properties:
+            read:
+              type: integer
+              minimum: 0
+            published:
+              type: integer
+              minimum: 0
+            unchanged:
+              type: integer
+              minimum: 0
+              description: Records whose contentHash equals the last published one; nothing was published.
+            rejected:
+              type: integer
+              minimum: 0
+    Document:
+      type: object
+      additionalProperties: false
+      description: Document metadata only (Req 3.9, 3.16). No PDF bytes, no extracted text, no object-store credential.
+      required: [documentId, sourceSystem, contentSha256, contentType, sizeBytes, discoveredAt, extraction]
+      properties:
+        documentId:
+          $ref: './common/components.yaml#/components/schemas/CanonicalId'
+        sourceSystem:
+          type: string
+        contentSha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        contentType:
+          type: string
+          const: application/pdf
+        sizeBytes:
+          type: integer
+          minimum: 0
+        discoveredAt:
+          type: string
+          format: date-time
+        extraction:
+          type: object
+          additionalProperties: false
+          required: [status, attempts]
+          properties:
+            status:
+              $ref: '#/components/schemas/ExtractionStatus'
+            attempts:
+              type: integer
+              minimum: 0
+            failureReason:
+              type: [string, 'null']
+              enum: [corrupt, encrypted, too-large, too-many-pages, timeout, text-too-large, null]
+            pageCount:
+              type: [integer, 'null']
+              minimum: 0
+            textSizeBytes:
+              type: [integer, 'null']
+              minimum: 0
+            finishedAt:
+              type: [string, 'null']
+              format: date-time
+    ConnectorListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Connector'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/ListMeta'
+    ConnectorRunEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/ConnectorRun'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/Meta'
+    ConnectorRunListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConnectorRun'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/ListMeta'
+    DocumentEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/Document'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/Meta'
+    DocumentListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Document'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/ListMeta'

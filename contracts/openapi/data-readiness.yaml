@@ -1,0 +1,332 @@
+openapi: 3.1.0
+info:
+  title: AutoReliance AI data-readiness API
+  version: 1.0.0
+  description: |
+    REST contract of the data-readiness bounded context (Python/FastAPI, data-platform deployable): ingestion
+    of source records and CAN logs, ingestion status, and the data quality report per source system (Req 2).
+    All values in examples are fictional.
+
+    ERP and MES records and PDF text reach data-readiness only as Kafka events from legacy-integration
+    (ADR-008, ADR-011); this API is for gateway clients only. No operation here is called by
+    legacy-integration, and data-readiness calls no legacy-integration operation (ADR-024). The one
+    synchronous route between the two contexts is the read-only, internal admin route
+    GET /admin/v1/layout-cache/{tenantId}, defined in admin.yaml and referenced here.
+
+    Standards (api-standards.md): base path /api/v1/data-readiness/, envelope { data, meta }, Problem Details
+    errors, cursor-only pagination. The tenant comes from the authenticated principal, never from the request.
+  license:
+    name: Proprietary
+    identifier: LicenseRef-AutoReliance-Proprietary
+servers:
+  - url: https://gateway.autoreliance.example
+    description: API gateway
+tags:
+  - name: ingestion
+    description: Source record and CAN log ingestion
+  - name: quality
+    description: Data quality reports
+  - name: operations
+    description: Internal health and admin routes
+security:
+  - tenantPrincipal: [data-engineer]
+paths:
+  /api/v1/data-readiness/ingest/{sourceType}:
+    post:
+      operationId: dataReadinessIngest
+      summary: Submit source records or a CAN log for ingestion
+      description: |
+        Stores each raw record unchanged with its source system, tenant, and ingestion time, then normalizes
+        it asynchronously (Req 2.1, 2.2). Submitting the same record again produces exactly one normalized
+        record (Req 2.6). A record that fails schema validation goes to the dead-letter store with its errors
+        and the rest of the batch continues (Req 2.5). A CAN log (MDF4 with its DBC) is submitted as
+        multipart/form-data with sourceType can-log (Req 2.3).
+      tags: [ingestion]
+      security:
+        - tenantPrincipal: [data-engineer]
+      parameters:
+        - name: sourceType
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/SourceType'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SourceRecordBatch'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CanLogUpload'
+      responses:
+        '202':
+          description: Accepted. Normalization runs asynchronously.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '413':
+          $ref: './common/components.yaml#/components/responses/Problem413'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/data-readiness/ingestions/{ingestionId}:
+    get:
+      operationId: dataReadinessGetIngestion
+      summary: Status of one ingestion
+      tags: [ingestion]
+      security:
+        - tenantPrincipal: [data-engineer, auditor]
+      parameters:
+        - name: ingestionId
+          in: path
+          required: true
+          schema:
+            $ref: './common/components.yaml#/components/schemas/CanonicalId'
+      responses:
+        '200':
+          description: The ingestion and its record counts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IngestionEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '404':
+          $ref: './common/components.yaml#/components/responses/Problem404'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/data-readiness/quality-reports:
+    get:
+      operationId: dataReadinessListQualityReports
+      summary: Data quality report per source system
+      description: Record counts for accepted, rejected, and ambiguous records per source system (Req 2.8).
+      tags: [quality]
+      security:
+        - tenantPrincipal: [data-engineer, auditor]
+      parameters:
+        - $ref: './common/components.yaml#/components/parameters/Cursor'
+        - $ref: './common/components.yaml#/components/parameters/Limit'
+      responses:
+        '200':
+          description: One page of quality reports.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QualityReportListEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/data-readiness/quality-reports/{sourceSystem}:
+    get:
+      operationId: dataReadinessGetQualityReport
+      summary: Data quality report of one source system
+      tags: [quality]
+      security:
+        - tenantPrincipal: [data-engineer, auditor]
+      parameters:
+        - $ref: '#/components/parameters/SourceSystem'
+      responses:
+        '200':
+          description: The quality report.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QualityReportEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '404':
+          $ref: './common/components.yaml#/components/responses/Problem404'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/data-readiness/health:
+    get:
+      operationId: dataReadinessHealth
+      summary: Liveness of the data-readiness context (internal)
+      description: Internal liveness probe. Not routed by the gateway. Reports healthy with no other context running.
+      tags: [operations]
+      x-internal-only: true
+      x-health-check: true
+      security: []
+      responses:
+        '200':
+          description: The context is up.
+          content:
+            application/json:
+              schema:
+                $ref: './common/components.yaml#/components/schemas/Health'
+        '503':
+          $ref: './common/components.yaml#/components/responses/Problem503'
+  /admin/v1/layout-cache/{tenantId}:
+    $ref: './admin.yaml#/paths/~1admin~1v1~1layout-cache~1{tenantId}'
+components:
+  securitySchemes:
+    tenantPrincipal:
+      $ref: './common/components.yaml#/components/securitySchemes/tenantPrincipal'
+    platformOperator:
+      $ref: './common/components.yaml#/components/securitySchemes/platformOperator'
+  parameters:
+    SourceSystem:
+      name: sourceSystem
+      in: path
+      required: true
+      description: Source system name (fictional in seed data).
+      schema:
+        type: string
+        pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
+  schemas:
+    SourceType:
+      type: string
+      enum: [erp, mes, plm, legacy-db, can-log]
+    SourceRecordBatch:
+      type: object
+      additionalProperties: false
+      required: [sourceSystem, records]
+      properties:
+        sourceSystem:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
+        records:
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/SourceRecord'
+    SourceRecord:
+      type: object
+      additionalProperties: false
+      required: [sourceRecordKey, entityType, attributes]
+      properties:
+        sourceRecordKey:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: Key of the record in its source system; used for exactly-once normalization (Req 2.6).
+        entityType:
+          type: string
+          enum: [vehicle, component-instance, software-artifact, configuration-snapshot]
+        attributes:
+          type: object
+          description: Source attributes as submitted. Stored unchanged as the raw record (Req 2.1).
+          additionalProperties:
+            type: [string, number, boolean, 'null']
+    CanLogUpload:
+      type: object
+      required: [sourceSystem, mdf, dbc]
+      properties:
+        sourceSystem:
+          type: string
+          pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
+        mdf:
+          type: string
+          contentMediaType: application/octet-stream
+          description: ASAM MDF4 file.
+        dbc:
+          type: string
+          contentMediaType: application/octet-stream
+          description: DBC definition used to decode the signals (Req 2.3).
+    Ingestion:
+      type: object
+      additionalProperties: false
+      required: [ingestionId, sourceType, sourceSystem, status, receivedAt, counts]
+      properties:
+        ingestionId:
+          $ref: './common/components.yaml#/components/schemas/CanonicalId'
+        sourceType:
+          $ref: '#/components/schemas/SourceType'
+        sourceSystem:
+          type: string
+        status:
+          type: string
+          enum: [accepted, processing, completed, failed]
+        receivedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: [string, 'null']
+          format: date-time
+        counts:
+          $ref: '#/components/schemas/RecordCounts'
+    RecordCounts:
+      type: object
+      additionalProperties: false
+      required: [received, accepted, rejected, ambiguous, duplicate]
+      properties:
+        received:
+          type: integer
+          minimum: 0
+        accepted:
+          type: integer
+          minimum: 0
+        rejected:
+          type: integer
+          minimum: 0
+          description: Records in the dead-letter store with their validation errors (Req 2.5).
+        ambiguous:
+          type: integer
+          minimum: 0
+          description: Records that matched more than one canonical entity (Req 1.8).
+        duplicate:
+          type: integer
+          minimum: 0
+          description: Records already normalized; they produced no new record (Req 2.6).
+    QualityReport:
+      type: object
+      additionalProperties: false
+      required: [sourceSystem, counts, generatedAt]
+      properties:
+        sourceSystem:
+          type: string
+        counts:
+          $ref: '#/components/schemas/RecordCounts'
+        generatedAt:
+          type: string
+          format: date-time
+    IngestionEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/Ingestion'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/Meta'
+    QualityReportEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/QualityReport'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/Meta'
+    QualityReportListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/QualityReport'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/ListMeta'

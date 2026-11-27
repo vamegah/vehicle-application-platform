@@ -1,0 +1,147 @@
+openapi: 3.1.0
+info:
+  title: AutoReliance AI api-gateway API
+  version: 1.0.0
+  description: |
+    REST contract of the endpoints the api-gateway serves itself (Spring Cloud Gateway): the tenant-scoped
+    audit query (Req 16.5). Every other route is a context route that the gateway forwards; those are defined in
+    the per-context files and composed into gateway.yaml. All values in examples are fictional.
+
+    Edge behaviour of every route (Req 12): 401 without a valid SSO token; 403 and an audit event when a role
+    is missing; the tenant is derived from the token and attached to the downstream call as a signed
+    Internal_Principal, and any tenant value in a body, path, or query of a tenant-facing route is ignored;
+    504 as Problem Details with a correlation ID on a downstream timeout; 413 above the payload limit.
+
+    Standards (api-standards.md): base path /api/v1/audit/, envelope { data, meta }, Problem Details errors,
+    cursor-only pagination.
+  license:
+    name: Proprietary
+    identifier: LicenseRef-AutoReliance-Proprietary
+servers:
+  - url: https://gateway.autoreliance.example
+    description: API gateway
+tags:
+  - name: audit
+    description: Audit record query
+security:
+  - tenantPrincipal: [auditor]
+paths:
+  /api/v1/audit/records:
+    get:
+      operationId: auditListRecords
+      summary: Audit records of the caller's tenant, newest first
+      description: |
+        Returns only records of the auditor's own tenant, and records an audit event for the query itself
+        (Req 16.5). Records come from the immutable, hash-chained audit store (Req 16.3, 16.7).
+      tags: [audit]
+      x-audit-event-required: true
+      security:
+        - tenantPrincipal: [auditor]
+      parameters:
+        - $ref: './common/components.yaml#/components/parameters/Cursor'
+        - $ref: './common/components.yaml#/components/parameters/Limit'
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: action
+          in: query
+          required: false
+          schema:
+            type: string
+            pattern: '^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$'
+        - name: resourceId
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 256
+      responses:
+        '200':
+          description: One page of audit records.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditRecordListEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+components:
+  securitySchemes:
+    tenantPrincipal:
+      $ref: './common/components.yaml#/components/securitySchemes/tenantPrincipal'
+  schemas:
+    AuditRecord:
+      type: object
+      additionalProperties: false
+      required: [auditRecordId, eventId, sourceContext, action, result, occurredAt, traceId, recordHash, prevRecordHash]
+      properties:
+        auditRecordId:
+          $ref: './common/components.yaml#/components/schemas/CanonicalId'
+        eventId:
+          type: string
+          format: uuid
+        sourceContext:
+          type: string
+          enum: [data-readiness, legacy-integration, integration-intelligence, configuration-assurance, release-assurance, api-gateway]
+        actor:
+          description: The user or service that acted. Null for an operator record, which carries operatorPrincipal.
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [type, id]
+              properties:
+                type:
+                  type: string
+                  enum: [user, service]
+                id:
+                  type: string
+            - type: 'null'
+        operatorPrincipal:
+          type: [string, 'null']
+          description: Set for /admin/ calls made by a platform operator on this tenant.
+        action:
+          type: string
+        resourceType:
+          type: [string, 'null']
+        resourceId:
+          type: [string, 'null']
+        result:
+          type: string
+          enum: [success, failure, denied, error, allowed]
+        occurredAt:
+          type: string
+          format: date-time
+        traceId:
+          $ref: './common/components.yaml#/components/schemas/TraceId'
+        recordHash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        prevRecordHash:
+          type: [string, 'null']
+          pattern: '^[0-9a-f]{64}$'
+    AuditRecordListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AuditRecord'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/ListMeta'

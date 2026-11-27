@@ -1,0 +1,38 @@
+openapi: 3.1.0
+info:
+  title: AutoReliance AI audit-sink API (internal)
+  version: 1.0.0
+  description: |
+    REST contract of the audit-sink deployable (Java/Spring Boot). audit-sink consumes audit.event.recorded
+    (contracts/asyncapi/audit-sink.yaml) and exposes only an internal liveness probe. It has no update or delete
+    operation: stored audit records are immutable (Req 16.4). The tenant-scoped audit query is served by the
+    api-gateway (api-gateway.yaml).
+  license:
+    name: Proprietary
+    identifier: LicenseRef-AutoReliance-Proprietary
+servers:
+  - url: http://audit-sink:8080
+    description: Internal cluster address
+tags:
+  - name: operations
+    description: Internal health
+security: []
+paths:
+  /api/v1/audit/health:
+    get:
+      operationId: auditSinkHealth
+      summary: Liveness of the audit sink (internal)
+      description: Internal liveness probe. Not routed by the gateway.
+      tags: [operations]
+      x-internal-only: true
+      x-health-check: true
+      security: []
+      responses:
+        '200':
+          description: The audit sink is up.
+          content:
+            application/json:
+              schema:
+                $ref: './common/components.yaml#/components/schemas/Health'
+        '503':
+          $ref: './common/components.yaml#/components/responses/Problem503'

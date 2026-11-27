@@ -1,0 +1,852 @@
+openapi: 3.1.0
+info:
+  title: AutoReliance AI release-assurance API
+  version: 1.0.0
+  description: |
+    REST contract of the release-assurance bounded context and deployable (Java/Spring Boot with a co-deployed
+    Python inference sidecar): release candidates, their evidence, evidence-sufficiency score, evidence gaps,
+    recommended tests, release risk score, release verdicts, human decisions, and the evidence chain (Req 8 to
+    11, 18). All values in examples are fictional.
+
+    Every score, gap, and verdict is computed from the Release_Projection, never by a synchronous call to
+    another context (Req 9.11). Every read of release evidence (operations with x-audit-event-required) records
+    audit.event.recorded before the evidence is returned (Req 16.1, 16.6). Verdicts and AI outputs are decision
+    support: the platform never certifies a vehicle or software (Req 11.6).
+
+    Standards (api-standards.md): base path /api/v1/release-assurance/, envelope { data, meta }, Problem Details
+    errors, cursor-only pagination. The tenant comes from the authenticated principal.
+  license:
+    name: Proprietary
+    identifier: LicenseRef-AutoReliance-Proprietary
+servers:
+  - url: https://gateway.autoreliance.example
+    description: API gateway
+tags:
+  - name: release-candidates
+    description: Release candidates
+  - name: evidence
+    description: Evidence, scores, and gaps
+  - name: recommendations
+    description: AI-assisted test selection
+  - name: verdicts
+    description: Release gate verdicts and human decisions
+  - name: operations
+    description: Internal health
+security:
+  - tenantPrincipal: [release-manager]
+paths:
+  /api/v1/release-assurance/release-candidates:
+    get:
+      operationId: releaseListCandidates
+      summary: Release candidates, newest first
+      tags: [release-candidates]
+      security:
+        - tenantPrincipal: [release-manager, firmware-engineer, configuration-engineer, auditor]
+      parameters:
+        - $ref: './common/components.yaml#/components/parameters/Cursor'
+        - $ref: './common/components.yaml#/components/parameters/Limit'
+        - name: firmwareChangeId
+          in: query
+          required: false
+          schema:
+            $ref: './common/components.yaml#/components/schemas/CanonicalId'
+      responses:
+        '200':
+          description: One page of release candidates.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReleaseCandidateListEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/release-assurance/release-candidates/{releaseCandidateId}:
+    get:
+      operationId: releaseGetCandidate
+      summary: One release candidate
+      tags: [release-candidates]
+      security:
+        - tenantPrincipal: [release-manager, firmware-engineer, configuration-engineer, auditor]
+      parameters:
+        - $ref: '#/components/parameters/ReleaseCandidateId'
+      responses:
+        '200':
+          description: The release candidate.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReleaseCandidateEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '404':
+          $ref: './common/components.yaml#/components/responses/Problem404'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/release-assurance/release-candidates/{releaseCandidateId}/evidence:
+    get:
+      operationId: releaseListEvidence
+      summary: Evidence_Items of a release candidate
+      description: A read of release evidence. Records audit.event.recorded before returning (Req 16.1, 16.6).
+      tags: [evidence]
+      x-audit-event-required: true
+      security:
+        - tenantPrincipal: [release-manager, firmware-engineer, auditor]
+      parameters:
+        - $ref: '#/components/parameters/ReleaseCandidateId'
+        - $ref: './common/components.yaml#/components/parameters/Cursor'
+        - $ref: './common/components.yaml#/components/parameters/Limit'
+        - name: type
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/EvidenceType'
+      responses:
+        '200':
+          description: One page of Evidence_Items.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceItemListEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '404':
+          $ref: './common/components.yaml#/components/responses/Problem404'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/release-assurance/release-candidates/{releaseCandidateId}/score:
+    get:
+      operationId: releaseGetEvidenceScore
+      summary: Evidence-sufficiency score of a release candidate
+      description: |
+        The 0 to 100 score with the Evidence_Items, open gaps, and policy rules that produced it (Req 9.1, 9.6).
+        A read of release evidence; records an audit event.
+      tags: [evidence]
+      x-audit-event-required: true
+      security:
+        - tenantPrincipal: [release-manager, firmware-engineer, auditor]
+      parameters:
+        - $ref: '#/components/parameters/ReleaseCandidateId'
+      responses:
+        '200':
+          description: The current evidence-sufficiency score.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceScoreEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '404':
+          $ref: './common/components.yaml#/components/responses/Problem404'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/release-assurance/release-candidates/{releaseCandidateId}/gaps:
+    get:
+      operationId: releaseListGaps
+      summary: Evidence_Gaps of a release candidate
+      description: Each gap with its affected entity and missing category (Req 9.3, 22.2). Records an audit event.
+      tags: [evidence]
+      x-audit-event-required: true
+      security:
+        - tenantPrincipal: [release-manager, firmware-engineer, auditor]
+      parameters:
+        - $ref: '#/components/parameters/ReleaseCandidateId'
+        - $ref: './common/components.yaml#/components/parameters/Cursor'
+        - $ref: './common/components.yaml#/components/parameters/Limit'
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [open, closed]
+      responses:
+        '200':
+          description: One page of Evidence_Gaps.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceGapListEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '404':
+          $ref: './common/components.yaml#/components/responses/Problem404'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/release-assurance/release-candidates/{releaseCandidateId}/recommendations:
+    get:
+      operationId: releaseListRecommendations
+      summary: Recommended tests for the open gaps
+      description: |
+        A ranked list of tests from the tenant's catalog that would cover the open gaps (Req 10.1, 10.6). Each
+        recommendation is AI-generated, subject to human acceptance, and cites the gap it addresses and the
+        historical results or dependency paths that justify it (Req 10.2, 10.3). When the inference sidecar is
+        unavailable, the rule-based ranking is returned and every item has fallback true (Req 10.4).
+      tags: [recommendations]
+      security:
+        - tenantPrincipal: [release-manager, firmware-engineer]
+      parameters:
+        - $ref: '#/components/parameters/ReleaseCandidateId'
+        - $ref: './common/components.yaml#/components/parameters/Cursor'
+        - $ref: './common/components.yaml#/components/parameters/Limit'
+      responses:
+        '200':
+          description: One page of ranked recommendations.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TestRecommendationListEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '404':
+          $ref: './common/components.yaml#/components/responses/Problem404'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/release-assurance/release-candidates/{releaseCandidateId}/release-risk-score:
+    get:
+      operationId: releaseGetReleaseRiskScore
+      summary: Release risk score of a release candidate
+      description: The 0 to 100 release risk score with citations (Req 9.12). Records an audit event.
+      tags: [evidence]
+      x-audit-event-required: true
+      security:
+        - tenantPrincipal: [release-manager, auditor]
+      parameters:
+        - $ref: '#/components/parameters/ReleaseCandidateId'
+      responses:
+        '200':
+          description: The current release risk score.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReleaseRiskScoreEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '404':
+          $ref: './common/components.yaml#/components/responses/Problem404'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/release-assurance/release-candidates/{releaseCandidateId}/verdicts:
+    post:
+      operationId: releaseIssueVerdict
+      summary: Request a release verdict
+      description: |
+        Evaluates the tenant release policy and returns approve, conditional, or block (Req 11.1). Any open
+        blocking gap, a score below the Sufficiency_Threshold, or an unavailable required input gives block
+        (Req 11.2, 11.7, 11.9). The verdict is stored with its inputs and policy version and an audit event is
+        recorded (Req 11.4). Decision support only (Req 11.6).
+      tags: [verdicts]
+      x-audit-event-required: true
+      security:
+        - tenantPrincipal: [release-manager]
+      parameters:
+        - $ref: '#/components/parameters/ReleaseCandidateId'
+      responses:
+        '201':
+          description: The issued verdict.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerdictEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '404':
+          $ref: './common/components.yaml#/components/responses/Problem404'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+    get:
+      operationId: releaseListVerdicts
+      summary: Verdicts issued for a release candidate, newest first
+      tags: [verdicts]
+      x-audit-event-required: true
+      security:
+        - tenantPrincipal: [release-manager, auditor]
+      parameters:
+        - $ref: '#/components/parameters/ReleaseCandidateId'
+        - $ref: './common/components.yaml#/components/parameters/Cursor'
+        - $ref: './common/components.yaml#/components/parameters/Limit'
+      responses:
+        '200':
+          description: One page of verdicts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerdictListEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '404':
+          $ref: './common/components.yaml#/components/responses/Problem404'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/release-assurance/release-candidates/{releaseCandidateId}/human-decisions:
+    post:
+      operationId: releaseRecordHumanDecision
+      summary: Record a human release decision
+      description: |
+        Stores the decision with the user identity (from the principal), timestamp, and rationale (Req 11.5).
+        The decision is separate from the verdict and is the decision of an authorized person.
+      tags: [verdicts]
+      x-audit-event-required: true
+      security:
+        - tenantPrincipal: [release-manager]
+      parameters:
+        - $ref: '#/components/parameters/ReleaseCandidateId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HumanDecisionRequest'
+      responses:
+        '201':
+          description: The recorded decision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HumanDecisionEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '404':
+          $ref: './common/components.yaml#/components/responses/Problem404'
+        '409':
+          $ref: './common/components.yaml#/components/responses/Problem409'
+        '413':
+          $ref: './common/components.yaml#/components/responses/Problem413'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/release-assurance/release-candidates/{releaseCandidateId}/evidence-chain:
+    get:
+      operationId: releaseGetEvidenceChain
+      summary: Evidence chain of a release candidate
+      description: |
+        The linked commit, firmware build, test results, risk scores, and release decisions that exist. A link
+        that does not exist is reported as missing and never inferred (Req 18.2, 18.3). Records an audit event.
+      tags: [evidence]
+      x-audit-event-required: true
+      security:
+        - tenantPrincipal: [release-manager, firmware-engineer, auditor]
+      parameters:
+        - $ref: '#/components/parameters/ReleaseCandidateId'
+      responses:
+        '200':
+          description: The evidence chain.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EvidenceChainEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '404':
+          $ref: './common/components.yaml#/components/responses/Problem404'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/release-assurance/health:
+    get:
+      operationId: releaseAssuranceHealth
+      summary: Liveness of the release-assurance context (internal)
+      description: Internal liveness probe. Not routed by the gateway. Healthy while the inference sidecar is stopped (Req 10.7).
+      tags: [operations]
+      x-internal-only: true
+      x-health-check: true
+      security: []
+      responses:
+        '200':
+          description: The context is up.
+          content:
+            application/json:
+              schema:
+                $ref: './common/components.yaml#/components/schemas/Health'
+        '503':
+          $ref: './common/components.yaml#/components/responses/Problem503'
+components:
+  securitySchemes:
+    tenantPrincipal:
+      $ref: './common/components.yaml#/components/securitySchemes/tenantPrincipal'
+  parameters:
+    ReleaseCandidateId:
+      name: releaseCandidateId
+      in: path
+      required: true
+      schema:
+        $ref: './common/components.yaml#/components/schemas/CanonicalId'
+  schemas:
+    CanonicalId:
+      $ref: './common/components.yaml#/components/schemas/CanonicalId'
+    EvidenceType:
+      type: string
+      enum: [test-result, dependency-impact, config-validation, integration-risk, configuration-risk]
+    ReleaseCandidate:
+      type: object
+      additionalProperties: false
+      description: An ECU set, firmware versions, calibration IDs, and test evidence proposed for release.
+      required: [releaseCandidateId, softwareArtifactCanonicalId, ecuCanonicalIds, firmwareVersions, calibrationIds, status, policyVersion, createdAt]
+      properties:
+        releaseCandidateId:
+          $ref: '#/components/schemas/CanonicalId'
+        firmwareChangeId:
+          oneOf:
+            - $ref: '#/components/schemas/CanonicalId'
+            - type: 'null'
+        softwareArtifactCanonicalId:
+          $ref: '#/components/schemas/CanonicalId'
+        ecuCanonicalIds:
+          type: array
+          items:
+            $ref: '#/components/schemas/CanonicalId'
+        firmwareVersions:
+          type: array
+          items:
+            type: string
+        calibrationIds:
+          type: array
+          items:
+            type: string
+        status:
+          type: string
+          enum: [open, verdict-issued, decided]
+        policyVersion:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+    EvidenceItem:
+      type: object
+      additionalProperties: false
+      required: [evidenceItemId, type, sourceEventId, result, recordedAt]
+      properties:
+        evidenceItemId:
+          $ref: '#/components/schemas/CanonicalId'
+        type:
+          $ref: '#/components/schemas/EvidenceType'
+        sourceEventId:
+          type: string
+          format: uuid
+          description: The consumed event; one Evidence_Item per event ID (Req 8.3).
+        result:
+          type: string
+          enum: [passed, failed, skipped, error, pass, fail, not-evaluable, computed]
+        coveredEntityCanonicalIds:
+          type: array
+          items:
+            $ref: '#/components/schemas/CanonicalId'
+        commitId:
+          type: [string, 'null']
+        firmwareBuildId:
+          type: [string, 'null']
+        testRunId:
+          type: [string, 'null']
+        recordedAt:
+          type: string
+          format: date-time
+    EvidenceGap:
+      type: object
+      additionalProperties: false
+      required: [gapId, affectedEntityCanonicalId, missingCategory, status, blocking, openedAt]
+      properties:
+        gapId:
+          $ref: '#/components/schemas/CanonicalId'
+        affectedEntityCanonicalId:
+          $ref: '#/components/schemas/CanonicalId'
+        missingCategory:
+          type: string
+          enum: [test-coverage, configuration-validation, evidence-recency]
+        reason:
+          type: string
+          enum: [no-evidence, failed-evidence, stale-evidence]
+        status:
+          type: string
+          enum: [open, closed]
+        blocking:
+          type: boolean
+          description: Marked blocking by the tenant release policy (Req 11.2).
+        openedAt:
+          type: string
+          format: date-time
+        closedAt:
+          type: [string, 'null']
+          format: date-time
+        closingEvidenceItemId:
+          oneOf:
+            - $ref: '#/components/schemas/CanonicalId'
+            - type: 'null'
+    EvidenceScore:
+      type: object
+      additionalProperties: false
+      required: [evidenceScoreId, score, sufficiencyThreshold, belowThreshold, policyVersion, contributingEvidenceItemIds, openGapIds, policyRuleIds, citations, computedAt]
+      properties:
+        evidenceScoreId:
+          $ref: '#/components/schemas/CanonicalId'
+        score:
+          type: number
+          minimum: 0
+          maximum: 100
+        sufficiencyThreshold:
+          type: number
+          minimum: 0
+          maximum: 100
+        belowThreshold:
+          type: boolean
+          description: True blocks the release (Req 9.10).
+        policyVersion:
+          type: string
+        contributingEvidenceItemIds:
+          type: array
+          items:
+            $ref: '#/components/schemas/CanonicalId'
+        openGapIds:
+          type: array
+          items:
+            $ref: '#/components/schemas/CanonicalId'
+        policyRuleIds:
+          type: array
+          items:
+            type: string
+        citations:
+          $ref: './common/components.yaml#/components/schemas/Citations'
+        computedAt:
+          type: string
+          format: date-time
+    TestRecommendation:
+      allOf:
+        - $ref: './common/components.yaml#/components/schemas/AiOutputLabels'
+        - type: object
+          required: [rank, testId, gapId, rationale, fallback, humanAcceptance]
+          properties:
+            rank:
+              type: integer
+              minimum: 1
+            testId:
+              type: string
+              description: A test registered in the tenant's test catalog (Req 10.6).
+            gapId:
+              $ref: '#/components/schemas/CanonicalId'
+            rationale:
+              type: string
+            humanAcceptance:
+              type: string
+              const: required
+              description: Every recommendation is subject to human acceptance (Req 10.3).
+    ReleaseRiskScore:
+      type: object
+      additionalProperties: false
+      required: [releaseRiskScoreId, score, evidenceScoreId, policyVersion, scoringVersion, unavailableInputs, citations, decisionSupportStatement, computedAt]
+      properties:
+        releaseRiskScoreId:
+          $ref: '#/components/schemas/CanonicalId'
+        score:
+          type: number
+          minimum: 0
+          maximum: 100
+        evidenceScoreId:
+          $ref: '#/components/schemas/CanonicalId'
+        policyVersion:
+          type: string
+        scoringVersion:
+          type: string
+        unavailableInputs:
+          type: array
+          items:
+            type: string
+            enum: [integration-risk, configuration-risk, configuration-validation]
+        citations:
+          $ref: './common/components.yaml#/components/schemas/Citations'
+        decisionSupportStatement:
+          $ref: './common/components.yaml#/components/schemas/DecisionSupportStatement'
+        computedAt:
+          type: string
+          format: date-time
+    RiskSummary:
+      type: object
+      additionalProperties: false
+      required: [score, estimate, requiresHumanReview, citations]
+      properties:
+        score:
+          type: number
+          minimum: 0
+          maximum: 100
+        estimate:
+          type: boolean
+          const: true
+        requiresHumanReview:
+          type: boolean
+          const: true
+        citations:
+          $ref: './common/components.yaml#/components/schemas/Citations'
+    Verdict:
+      type: object
+      additionalProperties: false
+      required: [verdictId, releaseCandidateId, verdict, evidenceScore, openGaps, integrationRisk, configurationRisk, configurationValidation, unavailableInputs, policyVersion, citations, decisionSupportStatement, issuedAt]
+      properties:
+        verdictId:
+          $ref: '#/components/schemas/CanonicalId'
+        releaseCandidateId:
+          $ref: '#/components/schemas/CanonicalId'
+        verdict:
+          type: string
+          enum: [approve, conditional, block]
+        blockingReasons:
+          type: array
+          items:
+            type: string
+            enum: [blocking-gap-open, below-sufficiency-threshold, required-input-unavailable]
+        evidenceScore:
+          $ref: '#/components/schemas/EvidenceScore'
+        openGaps:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceGap'
+        integrationRisk:
+          oneOf:
+            - $ref: '#/components/schemas/RiskSummary'
+            - type: 'null'
+        configurationRisk:
+          oneOf:
+            - $ref: '#/components/schemas/RiskSummary'
+            - type: 'null'
+        configurationValidation:
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [validationResultId, overallStatus]
+              properties:
+                validationResultId:
+                  $ref: '#/components/schemas/CanonicalId'
+                overallStatus:
+                  type: string
+                  enum: [pass, fail, not-evaluable]
+            - type: 'null'
+        unavailableInputs:
+          type: array
+          description: Policy-required inputs that were unavailable; any entry forces block (Req 11.7).
+          items:
+            type: string
+            enum: [integration-risk, configuration-risk, configuration-validation, evidence-score]
+        policyVersion:
+          type: string
+        citations:
+          $ref: './common/components.yaml#/components/schemas/Citations'
+        decisionSupportStatement:
+          $ref: './common/components.yaml#/components/schemas/DecisionSupportStatement'
+        issuedAt:
+          type: string
+          format: date-time
+    HumanDecisionRequest:
+      type: object
+      additionalProperties: false
+      required: [verdictId, decision, rationale]
+      properties:
+        verdictId:
+          $ref: '#/components/schemas/CanonicalId'
+        decision:
+          type: string
+          enum: [release, hold, reject]
+        rationale:
+          type: string
+          minLength: 1
+          maxLength: 4000
+    HumanDecision:
+      type: object
+      additionalProperties: false
+      required: [humanDecisionId, releaseCandidateId, verdictId, decision, rationale, decidedBy, decidedAt]
+      properties:
+        humanDecisionId:
+          $ref: '#/components/schemas/CanonicalId'
+        releaseCandidateId:
+          $ref: '#/components/schemas/CanonicalId'
+        verdictId:
+          $ref: '#/components/schemas/CanonicalId'
+        decision:
+          type: string
+          enum: [release, hold, reject]
+        rationale:
+          type: string
+        decidedBy:
+          type: string
+          description: The authenticated user, taken from the principal (Req 11.5).
+        decidedAt:
+          type: string
+          format: date-time
+    EvidenceChainLink:
+      type: object
+      additionalProperties: false
+      required: [link, status, records]
+      properties:
+        link:
+          type: string
+          enum: [commit, firmware-build, test-result, risk-score, release-decision]
+        status:
+          type: string
+          enum: [present, missing]
+          description: missing when the link does not exist; it is never inferred (Req 18.3).
+        records:
+          type: array
+          items:
+            $ref: './common/components.yaml#/components/schemas/Citation'
+    EvidenceChain:
+      type: object
+      additionalProperties: false
+      required: [releaseCandidateId, links, missingLinks]
+      properties:
+        releaseCandidateId:
+          $ref: '#/components/schemas/CanonicalId'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceChainLink'
+        missingLinks:
+          type: array
+          items:
+            type: string
+            enum: [commit, firmware-build, test-result, risk-score, release-decision]
+    ReleaseCandidateEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/ReleaseCandidate'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/Meta'
+    ReleaseCandidateListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReleaseCandidate'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/ListMeta'
+    EvidenceItemListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceItem'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/ListMeta'
+    EvidenceScoreEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/EvidenceScore'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/Meta'
+    EvidenceGapListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/EvidenceGap'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/ListMeta'
+    TestRecommendationListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/TestRecommendation'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/ListMeta'
+    ReleaseRiskScoreEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/ReleaseRiskScore'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/Meta'
+    VerdictEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/Verdict'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/Meta'
+    VerdictListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Verdict'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/ListMeta'
+    HumanDecisionEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/HumanDecision'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/Meta'
+    EvidenceChainEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/EvidenceChain'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/Meta'
