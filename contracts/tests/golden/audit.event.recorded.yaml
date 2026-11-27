@@ -1,0 +1,99 @@
+# Golden examples for audit.event.recorded (contracts/asyncapi/audit-sink.yaml), including the operator
+# audit record for /admin/* calls (Req 16.9). All values are fictional.
+doc: audit-sink.yaml
+message: AuditEventRecorded
+valid:
+  evidenceRead:
+    eventId: 1b6e8a5d-7c2d-4c7e-9a6b-6d2e9e3a7b01
+    eventType: audit.event.recorded
+    version: 1
+    tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    occurredAt: '2026-11-26T10:02:00Z'
+    payload:
+      sourceContext: release-assurance
+      actor: { type: user, id: fictional.release.manager@example.invalid }
+      action: release-evidence.read
+      resourceType: release-candidate
+      resourceId: 9b0c1d2e-3f4a-4b5c-8d6e-7f8a9b0c1d2e
+      result: success
+      occurredAt: '2026-11-26T10:02:00Z'
+      traceId: 0af7651916cd43dd8448eb211c80319c
+  connectorRun:
+    eventId: 1b6e8a5d-7c2d-4c7e-9a6b-6d2e9e3a7b02
+    eventType: audit.event.recorded
+    version: 1
+    tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    occurredAt: '2026-11-26T10:02:00Z'
+    payload:
+      sourceContext: legacy-integration
+      actor: { type: service, id: sample-connector }
+      action: connector-run.completed
+      resourceType: connector-run
+      resourceId: FIC-RUN-0001
+      result: success
+      occurredAt: '2026-11-26T10:02:00Z'
+      traceId: 0af7651916cd43dd8448eb211c80319d
+      details: { recordsRead: '120', recordsPublished: '118', recordsRejected: '2' }
+  operatorAllowed:
+    eventId: 1b6e8a5d-7c2d-4c7e-9a6b-6d2e9e3a7b03
+    eventType: audit.event.recorded
+    version: 1
+    tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    occurredAt: '2026-11-26T10:03:00Z'
+    payload:
+      sourceContext: api-gateway
+      operatorPrincipal: fictional.operator@example.invalid
+      targetTenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+      action: admin.layout.read
+      result: allowed
+      occurredAt: '2026-11-26T10:03:00Z'
+      traceId: 0af7651916cd43dd8448eb211c80319e
+      route: /admin/v1/layout/{tenantId}
+  operatorDenied:
+    eventId: 1b6e8a5d-7c2d-4c7e-9a6b-6d2e9e3a7b04
+    eventType: audit.event.recorded
+    version: 1
+    tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    occurredAt: '2026-11-26T10:03:00Z'
+    payload:
+      sourceContext: api-gateway
+      operatorPrincipal: fictional.release.manager@example.invalid
+      targetTenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+      action: admin.layout.read
+      result: denied
+      occurredAt: '2026-11-26T10:03:00Z'
+      traceId: 0af7651916cd43dd8448eb211c80319f
+invalid:
+  - name: operator record without operatorPrincipal
+    base: operatorAllowed
+    remove: [payload.operatorPrincipal]
+  - name: operator record without targetTenantId
+    base: operatorAllowed
+    remove: [payload.targetTenantId]
+  - name: operator record without action
+    base: operatorAllowed
+    remove: [payload.action]
+  - name: operator record without result
+    base: operatorAllowed
+    remove: [payload.result]
+  - name: operator record with an unknown result
+    base: operatorAllowed
+    set: { payload.result: success }
+  - name: operator record with a non-admin route
+    base: operatorAllowed
+    set: { payload.route: /api/v1/release-assurance/evidence }
+  - name: record mixing an actor and an operator principal
+    base: operatorAllowed
+    set: { payload.actor: { type: user, id: someone } }
+  - name: context record without traceId
+    base: evidenceRead
+    remove: [payload.traceId]
+  - name: context record with a malformed traceId
+    base: evidenceRead
+    set: { payload.traceId: not-a-trace-id }
+  - name: context record without actor
+    base: evidenceRead
+    remove: [payload.actor]
+  - name: unknown source context
+    base: evidenceRead
+    set: { payload.sourceContext: quality-intelligence }

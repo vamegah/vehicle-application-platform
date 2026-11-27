@@ -1,0 +1,262 @@
+asyncapi: 3.0.0
+info:
+  title: audit-sink
+  version: 1.0.0
+  description: >-
+    Event contract of the audit-sink deployable (Java/Spring Boot). audit-sink consumes
+    audit.event.recorded and appends each record to its immutable, hash-chained store (Req 16.3, 16.7);
+    a duplicate eventId stores one record (Req 16.8). audit.event.recorded is defined once, here. Every
+    context that audits publishes it through its own transactional outbox; each producer declares its
+    own send operation in its contracts/asyncapi/<context>.yaml and references the channel below.
+    Two record shapes exist. A context audit record (actor, action, resource, result, trace ID) covers
+    evidence reads, authentication and authorization failures, verdict issuance, connector runs, and
+    tenant mismatches (Req 16.1, 16.2, 15.6). An operator audit record covers every call to a route
+    under /admin/ (Req 16.9, security.md): operatorPrincipal, targetTenantId, action, result (allowed,
+    denied, or error), and occurredAt. For an operator record the envelope tenantId is the target
+    tenant and the operator principal is the separate operatorPrincipal field (security.md); the
+    equality of envelope tenantId and payload targetTenantId cannot be expressed in JSON Schema and is a
+    producer check and an audit-sink consumer check. Envelope: the base envelope of
+    contracts/asyncapi/common/envelope.yaml, defined file-locally and checked in CI; trace context
+    travels in Kafka record headers.
+  x-phase: 1
+  x-owner-context: audit-sink
+defaultContentType: application/json
+servers:
+  kafka:
+    host: kafka:9092
+    protocol: kafka
+    description: Apache Kafka 3.x event backbone (local dev address).
+channels:
+  auditEventRecorded:
+    address: audit.event.recorded
+    description: >-
+      One message per audited action. Partition key is "{tenantId}:{canonicalId}" where canonicalId is
+      the audited resource identifier (resourceId, or targetTenantId for an operator record), so the
+      records of one tenant chain are ordered per resource.
+    messages:
+      AuditEventRecorded:
+        $ref: '#/components/messages/AuditEventRecorded'
+    bindings:
+      kafka:
+        topic: audit.event.recorded
+        partitions: 12
+        replicas: 1
+  dltAuditSink:
+    address: dlt.audit-sink
+    description: Dead-letter topic of consumer group audit-sink.
+    messages:
+      DeadLetterRecord:
+        $ref: '#/components/messages/DeadLetterRecord'
+operations:
+  consumeAuditEventRecorded:
+    action: receive
+    summary: audit-sink appends the record to the immutable hash-chained store, once per eventId.
+    channel:
+      $ref: '#/channels/auditEventRecorded'
+    messages:
+      - $ref: '#/channels/auditEventRecorded/messages/AuditEventRecorded'
+    bindings:
+      kafka:
+        groupId:
+          type: string
+          enum:
+            - audit-sink
+    x-owner-context: audit-sink
+    x-dead-letter-topic: dlt.audit-sink
+  publishDltAuditSink:
+    action: send
+    channel:
+      $ref: '#/channels/dltAuditSink'
+    messages:
+      - $ref: '#/channels/dltAuditSink/messages/DeadLetterRecord'
+    x-owner-context: audit-sink
+components:
+  messages:
+    AuditEventRecorded:
+      name: AuditEventRecorded
+      title: Audit event recorded
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/KafkaHeaders'
+      payload:
+        $ref: '#/components/schemas/AuditEventRecordedEnvelope'
+      bindings:
+        kafka:
+          key:
+            type: string
+            description: '"{tenantId}:{canonicalId}" (canonicalId = resourceId, or targetTenantId for an operator record)'
+    DeadLetterRecord:
+      name: DeadLetterRecord
+      title: Dead-letter record
+      contentType: application/json
+      payload:
+        $ref: './common/dead-letter.yaml#/components/schemas/DeadLetterRecord'
+      bindings:
+        kafka:
+          key:
+            type: string
+            description: The Kafka key of the original record, unchanged.
+  schemas:
+    KafkaHeaders:
+      type: object
+      required:
+        - traceparent
+      properties:
+        traceparent:
+          type: string
+          description: W3C trace context.
+        tracestate:
+          type: string
+          description: W3C trace context vendor state.
+    AuditEventRecordedEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+        - eventId
+        - eventType
+        - version
+        - tenantId
+        - occurredAt
+        - payload
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        eventType:
+          type: string
+          const: audit.event.recorded
+        version:
+          type: integer
+          const: 1
+        tenantId:
+          type: string
+          format: uuid
+          description: The audited tenant. For an operator record it is the target tenant.
+        occurredAt:
+          type: string
+          format: date-time
+        payload:
+          $ref: '#/components/schemas/AuditEventRecordedPayload'
+    AuditEventRecordedPayload:
+      oneOf:
+        - $ref: '#/components/schemas/ContextAuditRecord'
+        - $ref: '#/components/schemas/OperatorAuditRecord'
+    ContextAuditRecord:
+      type: object
+      additionalProperties: false
+      description: An audited action inside a tenant (Req 16.1, 16.2).
+      required:
+        - sourceContext
+        - actor
+        - action
+        - resourceType
+        - resourceId
+        - result
+        - occurredAt
+        - traceId
+      properties:
+        sourceContext:
+          $ref: '#/components/schemas/AuditSourceContext'
+        actor:
+          type: object
+          additionalProperties: false
+          required:
+            - type
+            - id
+          properties:
+            type:
+              type: string
+              enum:
+                - user
+                - service
+            id:
+              type: string
+              minLength: 1
+              maxLength: 256
+        action:
+          type: string
+          pattern: '^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$'
+          description: Dotted action name, for example release-evidence.read, authorization.denied, verdict.issued, connector-run.completed.
+        resourceType:
+          type: string
+          minLength: 1
+          maxLength: 64
+        resourceId:
+          type: string
+          minLength: 1
+          maxLength: 256
+        result:
+          type: string
+          enum:
+            - success
+            - failure
+            - denied
+            - error
+        occurredAt:
+          type: string
+          format: date-time
+        traceId:
+          $ref: '#/components/schemas/TraceId'
+        details:
+          type: object
+          additionalProperties:
+            type: string
+          description: Optional string details, for example connector record counts. Never a credential.
+    OperatorAuditRecord:
+      type: object
+      additionalProperties: false
+      description: >-
+        A call to a route under /admin/ by a platform-operator principal (Req 16.9). Written to the outbox
+        before the response is returned, for allowed and for denied calls.
+      required:
+        - sourceContext
+        - operatorPrincipal
+        - targetTenantId
+        - action
+        - result
+        - occurredAt
+        - traceId
+      properties:
+        sourceContext:
+          $ref: '#/components/schemas/AuditSourceContext'
+        operatorPrincipal:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: The authenticated platform-operator principal. Not a tenant identifier.
+        targetTenantId:
+          type: string
+          format: uuid
+          description: The tenant named in the /admin/ path. Equal to the envelope tenantId.
+        action:
+          type: string
+          pattern: '^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$'
+          description: Dotted action name, for example admin.layout.read or admin.layout-cache.read.
+        result:
+          type: string
+          enum:
+            - allowed
+            - denied
+            - error
+        occurredAt:
+          type: string
+          format: date-time
+        traceId:
+          $ref: '#/components/schemas/TraceId'
+        route:
+          type: string
+          pattern: '^/admin/v[0-9]+/'
+          description: The called route template, for example /admin/v1/layout/{tenantId}.
+    AuditSourceContext:
+      type: string
+      enum:
+        - data-readiness
+        - legacy-integration
+        - integration-intelligence
+        - configuration-assurance
+        - release-assurance
+        - api-gateway
+    TraceId:
+      type: string
+      pattern: '^[0-9a-f]{32}$'
+      description: W3C trace ID of the audited request (Req 19.5).

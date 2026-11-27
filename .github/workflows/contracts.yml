@@ -1,0 +1,35 @@
+name: contracts
+
+# Task 2.1. Validates every AsyncAPI document with the pinned AsyncAPI CLI and runs the contract tests:
+# golden examples (valid samples pass, mutated samples fail), envelope rules, topic-name lint, reserved
+# and retired topic names, $ref resolution, and catalog structure. Versions come from DEPENDENCIES.lock.md.
+# Task 2.5 extends contract CI (OpenAPI conformance, Pact, schema compatibility).
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  asyncapi-contracts:
+    runs-on: ubuntu-latest
+    env:
+      ASYNCAPI_TELEMETRY: "false"
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "24.22.3"
+      - uses: actions/setup-python@v7.1.0
+        with:
+          python-version: "3.12.16"
+      - name: Install the pinned AsyncAPI CLI
+        working-directory: contracts
+        run: npm ci --no-audit --no-fund
+      - name: Install the pinned contract test requirements
+        run: python -m pip install -r contracts/tests/requirements.txt
+      - name: Contract tests (includes AsyncAPI CLI validation of every document)
+        run: python -m unittest discover -s contracts/tests -v

@@ -1,0 +1,319 @@
+asyncapi: 3.0.0
+info:
+  title: configuration-assurance
+  version: 1.0.0
+  description: >-
+    Event contract of the configuration-assurance bounded context (Java/Spring Boot, integration-config
+    deployable). The Config_Rule_Engine evaluates a Canonical_Configuration_Snapshot when the snapshot is
+    created or changed (vehicle.identity.resolved, defined in data-readiness.yaml) or listed as affected
+    by dependency.impact.computed (defined in integration-intelligence.yaml), and publishes
+    config.validation.completed (Req 7.1, 7.4). configuration.risk.scored is defined in its own file
+    (ADR-001). The dead-letter topics of the two consumer groups are defined here. Envelope: the base
+    envelope of contracts/asyncapi/common/envelope.yaml, defined file-locally and checked in CI; trace
+    context travels in Kafka record headers.
+  x-phase: 1
+  x-owner-context: configuration-assurance
+defaultContentType: application/json
+servers:
+  kafka:
+    host: kafka:9092
+    protocol: kafka
+    description: Apache Kafka 3.x event backbone (local dev address).
+channels:
+  configValidationCompleted:
+    address: config.validation.completed
+    description: >-
+      One message per completed evaluation of a configuration snapshot. Phase 1 catalog extension.
+      Partition key is "{tenantId}:{canonicalId}" with canonicalId = snapshotCanonicalId.
+    messages:
+      ConfigValidationCompleted:
+        $ref: '#/components/messages/ConfigValidationCompleted'
+    bindings:
+      kafka:
+        topic: config.validation.completed
+        partitions: 12
+        replicas: 1
+  vehicleIdentityResolved:
+    $ref: './data-readiness.yaml#/channels/vehicleIdentityResolved'
+  dependencyImpactComputed:
+    $ref: './integration-intelligence.yaml#/channels/dependencyImpactComputed'
+  configurationRiskScored:
+    $ref: './configuration.risk.scored.yaml#/channels/configurationRiskScored'
+  auditEventRecorded:
+    $ref: './audit-sink.yaml#/channels/auditEventRecorded'
+  dltConfigurationAssuranceIdentity:
+    address: dlt.configuration-assurance-identity
+    description: Dead-letter topic of consumer group configuration-assurance-identity (vehicle.identity.resolved).
+    messages:
+      DeadLetterRecord:
+        $ref: '#/components/messages/DeadLetterRecord'
+  dltConfigurationAssuranceImpact:
+    address: dlt.configuration-assurance-impact
+    description: Dead-letter topic of consumer group configuration-assurance-impact (dependency.impact.computed).
+    messages:
+      DeadLetterRecord:
+        $ref: '#/components/messages/DeadLetterRecord'
+operations:
+  publishConfigValidationCompleted:
+    action: send
+    summary: configuration-assurance publishes the validation result through its outbox.
+    channel:
+      $ref: '#/channels/configValidationCompleted'
+    messages:
+      - $ref: '#/channels/configValidationCompleted/messages/ConfigValidationCompleted'
+    x-owner-context: configuration-assurance
+  consumeConfigValidationCompleted:
+    action: receive
+    summary: release-assurance stores the result as an Evidence_Item in its Release_Projection (Req 8.2).
+    channel:
+      $ref: '#/channels/configValidationCompleted'
+    messages:
+      - $ref: '#/channels/configValidationCompleted/messages/ConfigValidationCompleted'
+    bindings:
+      kafka:
+        groupId:
+          type: string
+          enum:
+            - release-assurance-evidence
+    x-owner-context: release-assurance
+    x-dead-letter-topic: dlt.release-assurance-evidence
+  consumeVehicleIdentityResolvedConfiguration:
+    $ref: './data-readiness.yaml#/operations/consumeVehicleIdentityResolvedConfiguration'
+  consumeDependencyImpactComputedConfiguration:
+    $ref: './integration-intelligence.yaml#/operations/consumeDependencyImpactComputedConfiguration'
+  publishConfigurationRiskScored:
+    $ref: './configuration.risk.scored.yaml#/operations/publishConfigurationRiskScored'
+  publishAuditEventRecorded:
+    action: send
+    summary: >-
+      configuration-assurance records a gRPC tenant mismatch (Req 7.9) and wrong-tenant events through
+      its outbox.
+    channel:
+      $ref: '#/channels/auditEventRecorded'
+    messages:
+      - $ref: '#/channels/auditEventRecorded/messages/AuditEventRecorded'
+    x-owner-context: configuration-assurance
+  publishDltConfigurationAssuranceIdentity:
+    action: send
+    channel:
+      $ref: '#/channels/dltConfigurationAssuranceIdentity'
+    messages:
+      - $ref: '#/channels/dltConfigurationAssuranceIdentity/messages/DeadLetterRecord'
+    x-owner-context: configuration-assurance
+  publishDltConfigurationAssuranceImpact:
+    action: send
+    channel:
+      $ref: '#/channels/dltConfigurationAssuranceImpact'
+    messages:
+      - $ref: '#/channels/dltConfigurationAssuranceImpact/messages/DeadLetterRecord'
+    x-owner-context: configuration-assurance
+components:
+  messages:
+    ConfigValidationCompleted:
+      name: ConfigValidationCompleted
+      title: Configuration validation completed
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/KafkaHeaders'
+      payload:
+        $ref: '#/components/schemas/ConfigValidationCompletedEnvelope'
+      bindings:
+        kafka:
+          key:
+            type: string
+            description: '"{tenantId}:{canonicalId}" (canonicalId = snapshotCanonicalId)'
+    DeadLetterRecord:
+      name: DeadLetterRecord
+      title: Dead-letter record
+      contentType: application/json
+      payload:
+        $ref: './common/dead-letter.yaml#/components/schemas/DeadLetterRecord'
+      bindings:
+        kafka:
+          key:
+            type: string
+            description: The Kafka key of the original record, unchanged.
+  schemas:
+    KafkaHeaders:
+      type: object
+      required:
+        - traceparent
+      properties:
+        traceparent:
+          type: string
+          description: W3C trace context.
+        tracestate:
+          type: string
+          description: W3C trace context vendor state.
+    ConfigValidationCompletedEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+        - eventId
+        - eventType
+        - version
+        - tenantId
+        - occurredAt
+        - payload
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        eventType:
+          type: string
+          const: config.validation.completed
+        version:
+          type: integer
+          const: 1
+        tenantId:
+          type: string
+          format: uuid
+        occurredAt:
+          type: string
+          format: date-time
+        payload:
+          $ref: '#/components/schemas/ConfigValidationCompletedPayload'
+    ConfigValidationCompletedPayload:
+      type: object
+      additionalProperties: false
+      required:
+        - validationResultId
+        - snapshotCanonicalId
+        - ruleSetVersion
+        - overallStatus
+        - failedRuleIds
+        - ruleResults
+        - trigger
+        - evaluatedAt
+      properties:
+        validationResultId:
+          type: string
+          format: uuid
+        snapshotCanonicalId:
+          type: string
+          format: uuid
+          description: Canonical_ID of the evaluated Canonical_Configuration_Snapshot (Req 7.4).
+        ruleSetVersion:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: Version of the rule set used (Req 7.8).
+        overallStatus:
+          type: string
+          enum:
+            - pass
+            - fail
+            - not-evaluable
+          description: fail when any rule failed; otherwise not-evaluable when any rule was not evaluable; otherwise pass.
+        failedRuleIds:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+          description: Identifiers of the failed rules (Req 7.4). Empty when no rule failed.
+        ruleResults:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/RuleResult'
+        trigger:
+          $ref: '#/components/schemas/ValidationTrigger'
+        evaluatedAt:
+          type: string
+          format: date-time
+    RuleResult:
+      type: object
+      additionalProperties: false
+      required:
+        - ruleResultId
+        - ruleId
+        - ruleCategory
+        - status
+      allOf:
+        - if:
+            properties:
+              status:
+                const: fail
+          then:
+            required:
+              - offendingEntityCanonicalIds
+            properties:
+              offendingEntityCanonicalIds:
+                minItems: 1
+        - if:
+            properties:
+              status:
+                const: not-evaluable
+          then:
+            required:
+              - missingData
+            properties:
+              missingData:
+                minItems: 1
+      properties:
+        ruleResultId:
+          type: string
+          format: uuid
+          description: Identifier cited by configuration.risk.scored.
+        ruleId:
+          type: string
+          minLength: 1
+          maxLength: 128
+        ruleCategory:
+          type: string
+          enum:
+            - hardware-revision-compatibility
+            - firmware-dependency
+            - communication-protocol
+            - regional-configuration
+            - calibration-presence
+            - programming-readiness
+          description: The six Phase 1 rule families (Req 7.2).
+        status:
+          type: string
+          enum:
+            - pass
+            - fail
+            - not-evaluable
+          description: A rule with missing data is not-evaluable, never pass (Req 7.5).
+        offendingEntityCanonicalIds:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+          description: Entities that make the rule fail (Req 7.3). Required and non-empty when status is fail.
+        missingData:
+          type: array
+          items:
+            type: string
+            minLength: 1
+          description: The data that was missing (Req 7.5). Required and non-empty when status is not-evaluable.
+    ValidationTrigger:
+      type: object
+      additionalProperties: false
+      required:
+        - type
+      allOf:
+        - if:
+            properties:
+              type:
+                const: impact-computed
+          then:
+            required:
+              - impactResultId
+              - firmwareChangeId
+      properties:
+        type:
+          type: string
+          enum:
+            - snapshot-created
+            - snapshot-updated
+            - impact-computed
+        impactResultId:
+          type: string
+          format: uuid
+        firmwareChangeId:
+          type: string
+          format: uuid

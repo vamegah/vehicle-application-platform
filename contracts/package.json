@@ -1,0 +1,14 @@
+{
+  "name": "autoreliance-contract-tooling",
+  "private": true,
+  "description": "Pinned contract validation tooling (AsyncAPI CLI). Approved by the user for task 2.1 on 2026-11-26. Versions are recorded in DEPENDENCIES.lock.md.",
+  "engines": {
+    "node": "24.22.3"
+  },
+  "scripts": {
+    "test": "cd .. && python -m unittest discover -s contracts/tests -v"
+  },
+  "devDependencies": {
+    "@asyncapi/cli": "6.3.1"
+  }
+}

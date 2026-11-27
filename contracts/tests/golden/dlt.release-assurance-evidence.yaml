@@ -1,0 +1,58 @@
+# Golden examples for a consumer-group dead-letter topic (contracts/asyncapi/common/dead-letter.yaml,
+# referenced by dlt.release-assurance-evidence in contracts/asyncapi/release-assurance.yaml).
+# All values are fictional.
+doc: release-assurance.yaml
+message: DeadLetterRecord
+valid:
+  schemaInvalid:
+    deadLetterId: 3f4a5b6c-7d8e-4f9a-8b0c-1d2e3f4a5b6c
+    tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    consumerGroup: release-assurance-evidence
+    originalTopic: test.result.recorded
+    originalPartition: 4
+    originalOffset: 1882
+    originalKey: '0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d:8a9b0c1d-2e3f-4a4b-9c5d-6e7f8a9b0c1d'
+    originalEventId: 9f4c6e3b-5a0b-4a5c-9e4f-4b0c7c1e5f01
+    originalVersion: 1
+    failureKind: schema-invalid
+    failureReason: payload.occurrenceVersion is required
+    validationErrors: ["payload: 'occurrenceVersion' is a required property"]
+    attempts: 1
+    firstFailedAt: '2026-11-26T10:06:00Z'
+    lastFailedAt: '2026-11-26T10:06:00Z'
+    originalHeaders: { traceparent: 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01 }
+    originalValue: '{"eventId":"9f4c6e3b-5a0b-4a5c-9e4f-4b0c7c1e5f01"}'
+    originalValueEncoding: utf-8
+  unparseable:
+    deadLetterId: 3f4a5b6c-7d8e-4f9a-8b0c-1d2e3f4a5b6d
+    tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    consumerGroup: release-assurance-evidence
+    originalTopic: test.result.recorded
+    originalPartition: 4
+    originalOffset: 1883
+    originalKey: null
+    originalEventId: null
+    originalVersion: null
+    failureKind: schema-invalid
+    failureReason: value is not JSON
+    attempts: 1
+    firstFailedAt: '2026-11-26T10:06:00Z'
+    lastFailedAt: '2026-11-26T10:06:00Z'
+    originalValue: AAECAw==
+    originalValueEncoding: base64
+invalid:
+  - name: missing tenantId
+    base: schemaInvalid
+    remove: [tenantId]
+  - name: unknown failure kind
+    base: schemaInvalid
+    set: { failureKind: ignored }
+  - name: attempts 0
+    base: schemaInvalid
+    set: { attempts: 0 }
+  - name: unknown value encoding
+    base: schemaInvalid
+    set: { originalValueEncoding: utf-16 }
+  - name: missing original offset
+    base: schemaInvalid
+    remove: [originalOffset]

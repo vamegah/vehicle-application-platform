@@ -1,0 +1,227 @@
+asyncapi: 3.0.0
+info:
+  title: release-assurance
+  version: 1.0.0
+  description: >-
+    Event contract of the release-assurance bounded context and deployable (Java/Spring Boot with a
+    co-deployed Python inference sidecar). release-assurance builds its Release_Projection only from
+    consumed events and never calls another service to compute a score (Req 9.11): test.result.recorded
+    (defined in legacy-integration.yaml), dependency.impact.computed (integration-intelligence.yaml),
+    config.validation.completed (configuration-assurance.yaml), integration.risk.scored, and
+    configuration.risk.scored (their own files). All five are consumed by the one consumer group
+    release-assurance-evidence, whose dead-letter topic is defined here. release-assurance publishes
+    release.evidence.gap.detected (defined here, Req 9.4) and release.risk.scored (its own file). It does
+    not subscribe to release.risk.scored (Req 8.7, ADR-001). Envelope: the base envelope of
+    contracts/asyncapi/common/envelope.yaml, defined file-locally and checked in CI; trace context
+    travels in Kafka record headers.
+  x-phase: 1
+  x-owner-context: release-assurance
+defaultContentType: application/json
+servers:
+  kafka:
+    host: kafka:9092
+    protocol: kafka
+    description: Apache Kafka 3.x event backbone (local dev address).
+channels:
+  releaseEvidenceGapDetected:
+    address: release.evidence.gap.detected
+    description: >-
+      One message each time the Gap_Detector records new Evidence_Gaps for a Release_Candidate. No
+      Phase 1 consumer; OTA Risk and Compliance Evidence consume it from Phase 3. Partition key is
+      "{tenantId}:{canonicalId}" with canonicalId = releaseCandidateId, so the gaps of one release
+      candidate stay ordered.
+    messages:
+      ReleaseEvidenceGapDetected:
+        $ref: '#/components/messages/ReleaseEvidenceGapDetected'
+    bindings:
+      kafka:
+        topic: release.evidence.gap.detected
+        partitions: 12
+        replicas: 1
+  testResultRecorded:
+    $ref: './legacy-integration.yaml#/channels/testResultRecorded'
+  dependencyImpactComputed:
+    $ref: './integration-intelligence.yaml#/channels/dependencyImpactComputed'
+  configValidationCompleted:
+    $ref: './configuration-assurance.yaml#/channels/configValidationCompleted'
+  integrationRiskScored:
+    $ref: './integration.risk.scored.yaml#/channels/integrationRiskScored'
+  configurationRiskScored:
+    $ref: './configuration.risk.scored.yaml#/channels/configurationRiskScored'
+  releaseRiskScored:
+    $ref: './release.risk.scored.yaml#/channels/releaseRiskScored'
+  auditEventRecorded:
+    $ref: './audit-sink.yaml#/channels/auditEventRecorded'
+  dltReleaseAssuranceEvidence:
+    address: dlt.release-assurance-evidence
+    description: Dead-letter topic of consumer group release-assurance-evidence (all five evidence topics, Req 8.5).
+    messages:
+      DeadLetterRecord:
+        $ref: '#/components/messages/DeadLetterRecord'
+operations:
+  publishReleaseEvidenceGapDetected:
+    action: send
+    summary: release-assurance publishes new Evidence_Gaps through its outbox.
+    channel:
+      $ref: '#/channels/releaseEvidenceGapDetected'
+    messages:
+      - $ref: '#/channels/releaseEvidenceGapDetected/messages/ReleaseEvidenceGapDetected'
+    x-owner-context: release-assurance
+  consumeTestResultRecorded:
+    $ref: './legacy-integration.yaml#/operations/consumeTestResultRecorded'
+  consumeDependencyImpactComputedRelease:
+    $ref: './integration-intelligence.yaml#/operations/consumeDependencyImpactComputedRelease'
+  consumeConfigValidationCompleted:
+    $ref: './configuration-assurance.yaml#/operations/consumeConfigValidationCompleted'
+  consumeIntegrationRiskScored:
+    $ref: './integration.risk.scored.yaml#/operations/consumeIntegrationRiskScored'
+  consumeConfigurationRiskScored:
+    $ref: './configuration.risk.scored.yaml#/operations/consumeConfigurationRiskScored'
+  publishReleaseRiskScored:
+    $ref: './release.risk.scored.yaml#/operations/publishReleaseRiskScored'
+  publishAuditEventRecorded:
+    action: send
+    summary: >-
+      release-assurance records every read of release evidence and every verdict issuance through its
+      outbox before it returns evidence (Req 16.1, 16.2, 16.6).
+    channel:
+      $ref: '#/channels/auditEventRecorded'
+    messages:
+      - $ref: '#/channels/auditEventRecorded/messages/AuditEventRecorded'
+    x-owner-context: release-assurance
+  publishDltReleaseAssuranceEvidence:
+    action: send
+    channel:
+      $ref: '#/channels/dltReleaseAssuranceEvidence'
+    messages:
+      - $ref: '#/channels/dltReleaseAssuranceEvidence/messages/DeadLetterRecord'
+    x-owner-context: release-assurance
+components:
+  messages:
+    ReleaseEvidenceGapDetected:
+      name: ReleaseEvidenceGapDetected
+      title: Release evidence gap detected
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/KafkaHeaders'
+      payload:
+        $ref: '#/components/schemas/ReleaseEvidenceGapDetectedEnvelope'
+      bindings:
+        kafka:
+          key:
+            type: string
+            description: '"{tenantId}:{canonicalId}" (canonicalId = releaseCandidateId)'
+    DeadLetterRecord:
+      name: DeadLetterRecord
+      title: Dead-letter record
+      contentType: application/json
+      payload:
+        $ref: './common/dead-letter.yaml#/components/schemas/DeadLetterRecord'
+      bindings:
+        kafka:
+          key:
+            type: string
+            description: The Kafka key of the original record, unchanged.
+  schemas:
+    KafkaHeaders:
+      type: object
+      required:
+        - traceparent
+      properties:
+        traceparent:
+          type: string
+          description: W3C trace context.
+        tracestate:
+          type: string
+          description: W3C trace context vendor state.
+    ReleaseEvidenceGapDetectedEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+        - eventId
+        - eventType
+        - version
+        - tenantId
+        - occurredAt
+        - payload
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        eventType:
+          type: string
+          const: release.evidence.gap.detected
+        version:
+          type: integer
+          const: 1
+        tenantId:
+          type: string
+          format: uuid
+        occurredAt:
+          type: string
+          format: date-time
+        payload:
+          $ref: '#/components/schemas/ReleaseEvidenceGapDetectedPayload'
+    ReleaseEvidenceGapDetectedPayload:
+      type: object
+      additionalProperties: false
+      required:
+        - releaseCandidateId
+        - evidenceScoreId
+        - policyVersion
+        - detectedAt
+        - gaps
+      properties:
+        releaseCandidateId:
+          type: string
+          format: uuid
+          description: The Release_Candidate the gaps belong to (Req 9.4).
+        evidenceScoreId:
+          type: string
+          format: uuid
+          description: The evidence-sufficiency score computed together with the gaps.
+        policyVersion:
+          type: string
+          minLength: 1
+          maxLength: 64
+        detectedAt:
+          type: string
+          format: date-time
+        gaps:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/EvidenceGap'
+    EvidenceGap:
+      type: object
+      additionalProperties: false
+      required:
+        - gapId
+        - affectedEntityCanonicalId
+        - missingCategory
+        - openedAt
+      properties:
+        gapId:
+          type: string
+          format: uuid
+        affectedEntityCanonicalId:
+          type: string
+          format: uuid
+          description: The affected entity with no sufficient covering Evidence_Item (Req 9.3).
+        missingCategory:
+          type: string
+          enum:
+            - test-coverage
+            - configuration-validation
+            - evidence-recency
+          description: The required evidence category of the tenant release policy that is missing (Req 9.2).
+        openedAt:
+          type: string
+          format: date-time
+        reason:
+          type: string
+          enum:
+            - no-evidence
+            - failed-evidence
+            - stale-evidence
+          description: failed-evidence when the only covering item failed (Req 9.8).

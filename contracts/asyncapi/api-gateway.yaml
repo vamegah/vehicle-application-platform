@@ -1,0 +1,33 @@
+asyncapi: 3.0.0
+info:
+  title: api-gateway
+  version: 1.0.0
+  description: >-
+    Event contract of the api-gateway deployable (Spring Cloud Gateway). The gateway publishes
+    audit.event.recorded for authentication failures, authorization failures (403), audit queries
+    (Req 16.2, 16.5), and every call to a route under /admin/, allowed or denied (Req 16.9). An /admin/
+    call is recorded with the operator audit record defined in audit-sink.yaml: operatorPrincipal,
+    targetTenantId, action, result (allowed, denied, or error), and occurredAt. The envelope tenantId of
+    that event is the target tenant, and the operator principal is the separate operatorPrincipal field
+    (security.md). The record is written to the outbox before the response is returned. The topic and its
+    payload are defined once, in audit-sink.yaml, and referenced here. The gateway consumes no topic.
+  x-phase: 1
+  x-owner-context: api-gateway
+defaultContentType: application/json
+servers:
+  kafka:
+    host: kafka:9092
+    protocol: kafka
+    description: Apache Kafka 3.x event backbone (local dev address).
+channels:
+  auditEventRecorded:
+    $ref: './audit-sink.yaml#/channels/auditEventRecorded'
+operations:
+  publishAuditEventRecorded:
+    action: send
+    summary: The gateway records edge security events and every /admin/ call through its outbox.
+    channel:
+      $ref: '#/channels/auditEventRecorded'
+    messages:
+      - $ref: '#/channels/auditEventRecorded/messages/AuditEventRecorded'
+    x-owner-context: api-gateway

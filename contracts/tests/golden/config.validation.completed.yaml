@@ -1,0 +1,82 @@
+# Golden examples for config.validation.completed (contracts/asyncapi/configuration-assurance.yaml).
+# All values are fictional.
+doc: configuration-assurance.yaml
+message: ConfigValidationCompleted
+valid:
+  failedAfterImpact:
+    eventId: 8e3b5d2a-4f9a-4f4b-8d3e-3a9b6b0d4e01
+    eventType: config.validation.completed
+    version: 1
+    tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    occurredAt: '2026-11-26T09:00:05Z'
+    payload:
+      validationResultId: 6e7f8a9b-0c1d-4e2f-9a3b-4c5d6e7f8a9b
+      snapshotCanonicalId: 3b4c5d6e-7f8a-4b9c-8d0e-1f2a3b4c5d6e
+      ruleSetVersion: rs-2026.11.1
+      overallStatus: fail
+      failedRuleIds: [FIC-RULE-HW-001]
+      ruleResults:
+        - ruleResultId: 7f8a9b0c-1d2e-4f3a-8b4c-5d6e7f8a9b0c
+          ruleId: FIC-RULE-HW-001
+          ruleCategory: hardware-revision-compatibility
+          status: fail
+          offendingEntityCanonicalIds: [5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a]
+        - ruleResultId: 7f8a9b0c-1d2e-4f3a-8b4c-5d6e7f8a9b0d
+          ruleId: FIC-RULE-CAL-001
+          ruleCategory: calibration-presence
+          status: not-evaluable
+          missingData: [calibration file list for FIC-ECU-BRAKE]
+        - ruleResultId: 7f8a9b0c-1d2e-4f3a-8b4c-5d6e7f8a9b0e
+          ruleId: FIC-RULE-REG-001
+          ruleCategory: regional-configuration
+          status: pass
+      trigger:
+        type: impact-computed
+        impactResultId: 4c5d6e7f-8a9b-4c0d-9e1f-2a3b4c5d6e7f
+        firmwareChangeId: 9d8c7b6a-5f4e-4d3c-8b2a-190f8e7d6c5b
+      evaluatedAt: '2026-11-26T09:00:04Z'
+  passedOnSnapshotCreated:
+    eventId: 8e3b5d2a-4f9a-4f4b-8d3e-3a9b6b0d4e02
+    eventType: config.validation.completed
+    version: 1
+    tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    occurredAt: '2026-11-26T09:00:05Z'
+    payload:
+      validationResultId: 6e7f8a9b-0c1d-4e2f-9a3b-4c5d6e7f8a90
+      snapshotCanonicalId: 3b4c5d6e-7f8a-4b9c-8d0e-1f2a3b4c5d6e
+      ruleSetVersion: rs-2026.11.1
+      overallStatus: pass
+      failedRuleIds: []
+      ruleResults:
+        - ruleResultId: 7f8a9b0c-1d2e-4f3a-8b4c-5d6e7f8a9b01
+          ruleId: FIC-RULE-PRG-001
+          ruleCategory: programming-readiness
+          status: pass
+      trigger:
+        type: snapshot-created
+      evaluatedAt: '2026-11-26T09:00:04Z'
+invalid:
+  - name: failed rule without offending entities
+    base: failedAfterImpact
+    remove: [payload.ruleResults.0.offendingEntityCanonicalIds]
+  - name: failed rule with an empty offending-entity list
+    base: failedAfterImpact
+    set: { payload.ruleResults.0.offendingEntityCanonicalIds: [] }
+  - name: not-evaluable rule without missing data
+    base: failedAfterImpact
+    remove: [payload.ruleResults.1.missingData]
+  - name: missing ruleSetVersion
+    base: failedAfterImpact
+    remove: [payload.ruleSetVersion]
+  - name: unknown rule status
+    base: failedAfterImpact
+    set: { payload.ruleResults.2.status: skipped }
+  - name: unknown rule category
+    base: failedAfterImpact
+    set: { payload.ruleResults.2.ruleCategory: warranty }
+  - name: impact trigger without impactResultId
+    base: failedAfterImpact
+    remove: [payload.trigger.impactResultId]
+  - name: no rule results
+    base: passedOnSnapshotCreated
+    set: { payload.ruleResults: [] }

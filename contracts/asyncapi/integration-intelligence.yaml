@@ -1,0 +1,428 @@
+asyncapi: 3.0.0
+info:
+  title: integration-intelligence
+  version: 1.0.0
+  description: >-
+    Event contract of the integration-intelligence bounded context (Java/Spring Boot, Neo4j,
+    integration-config deployable). integration-intelligence records firmware changes and publishes
+    firmware.change.committed (Req 5.1), traverses the Dependency_Graph and publishes
+    dependency.impact.computed (Req 5.3), and publishes integration.risk.scored (defined in its own
+    file, ADR-001). It consumes vehicle.identity.resolved (defined in data-readiness.yaml) to build the
+    graph, and consumes its own two topics to run the Impact_Analyzer and the Risk_Predictor. The
+    dead-letter topics of its three consumer groups are defined here. Envelope: the base envelope of
+    contracts/asyncapi/common/envelope.yaml, defined file-locally and checked in CI; trace context
+    travels in Kafka record headers.
+  x-phase: 1
+  x-owner-context: integration-intelligence
+defaultContentType: application/json
+servers:
+  kafka:
+    host: kafka:9092
+    protocol: kafka
+    description: Apache Kafka 3.x event backbone (local dev address).
+channels:
+  firmwareChangeCommitted:
+    address: firmware.change.committed
+    description: >-
+      One message per recorded firmware change. Partition key is "{tenantId}:{canonicalId}" with
+      canonicalId = artifactCanonicalId, so the changes of one software artifact stay ordered.
+    messages:
+      FirmwareChangeCommitted:
+        $ref: '#/components/messages/FirmwareChangeCommitted'
+    bindings:
+      kafka:
+        topic: firmware.change.committed
+        partitions: 12
+        replicas: 1
+  dependencyImpactComputed:
+    address: dependency.impact.computed
+    description: >-
+      One message per completed impact traversal. Partition key is "{tenantId}:{canonicalId}" with
+      canonicalId = changedArtifactCanonicalId. No message is published when the changed artifact does
+      not exist in the Dependency_Graph (Req 5.7).
+    messages:
+      DependencyImpactComputed:
+        $ref: '#/components/messages/DependencyImpactComputed'
+    bindings:
+      kafka:
+        topic: dependency.impact.computed
+        partitions: 12
+        replicas: 1
+  vehicleIdentityResolved:
+    $ref: './data-readiness.yaml#/channels/vehicleIdentityResolved'
+  integrationRiskScored:
+    $ref: './integration.risk.scored.yaml#/channels/integrationRiskScored'
+  auditEventRecorded:
+    $ref: './audit-sink.yaml#/channels/auditEventRecorded'
+  dltIntegrationIntelligenceIdentity:
+    address: dlt.integration-intelligence-identity
+    description: >-
+      Dead-letter topic of consumer group integration-intelligence-identity (vehicle.identity.resolved),
+      including events whose referenced Canonical_ID did not arrive before the retry limit (Req 4.5).
+    messages:
+      DeadLetterRecord:
+        $ref: '#/components/messages/DeadLetterRecord'
+  dltIntegrationIntelligenceChange:
+    address: dlt.integration-intelligence-change
+    description: Dead-letter topic of consumer group integration-intelligence-change (firmware.change.committed).
+    messages:
+      DeadLetterRecord:
+        $ref: '#/components/messages/DeadLetterRecord'
+  dltIntegrationIntelligenceImpact:
+    address: dlt.integration-intelligence-impact
+    description: Dead-letter topic of consumer group integration-intelligence-impact (dependency.impact.computed).
+    messages:
+      DeadLetterRecord:
+        $ref: '#/components/messages/DeadLetterRecord'
+operations:
+  publishFirmwareChangeCommitted:
+    action: send
+    summary: integration-intelligence records a firmware change and publishes it through its outbox.
+    channel:
+      $ref: '#/channels/firmwareChangeCommitted'
+    messages:
+      - $ref: '#/channels/firmwareChangeCommitted/messages/FirmwareChangeCommitted'
+    x-owner-context: integration-intelligence
+  consumeFirmwareChangeCommitted:
+    action: receive
+    summary: The Impact_Analyzer traverses the Dependency_Graph for the changed artifact (Req 5.2).
+    channel:
+      $ref: '#/channels/firmwareChangeCommitted'
+    messages:
+      - $ref: '#/channels/firmwareChangeCommitted/messages/FirmwareChangeCommitted'
+    bindings:
+      kafka:
+        groupId:
+          type: string
+          enum:
+            - integration-intelligence-change
+    x-owner-context: integration-intelligence
+    x-dead-letter-topic: dlt.integration-intelligence-change
+  publishDependencyImpactComputed:
+    action: send
+    summary: integration-intelligence publishes the traversal result through its outbox.
+    channel:
+      $ref: '#/channels/dependencyImpactComputed'
+    messages:
+      - $ref: '#/channels/dependencyImpactComputed/messages/DependencyImpactComputed'
+    x-owner-context: integration-intelligence
+  consumeDependencyImpactComputedIntegration:
+    action: receive
+    summary: The Risk_Predictor scores the change and publishes integration.risk.scored (Req 6.6).
+    channel:
+      $ref: '#/channels/dependencyImpactComputed'
+    messages:
+      - $ref: '#/channels/dependencyImpactComputed/messages/DependencyImpactComputed'
+    bindings:
+      kafka:
+        groupId:
+          type: string
+          enum:
+            - integration-intelligence-impact
+    x-owner-context: integration-intelligence
+    x-dead-letter-topic: dlt.integration-intelligence-impact
+  consumeDependencyImpactComputedConfiguration:
+    action: receive
+    summary: configuration-assurance evaluates every affected configuration snapshot (Req 7.1).
+    channel:
+      $ref: '#/channels/dependencyImpactComputed'
+    messages:
+      - $ref: '#/channels/dependencyImpactComputed/messages/DependencyImpactComputed'
+    bindings:
+      kafka:
+        groupId:
+          type: string
+          enum:
+            - configuration-assurance-impact
+    x-owner-context: configuration-assurance
+    x-dead-letter-topic: dlt.configuration-assurance-impact
+  consumeDependencyImpactComputedRelease:
+    action: receive
+    summary: release-assurance stores the impact as an Evidence_Item in its Release_Projection (Req 8.2).
+    channel:
+      $ref: '#/channels/dependencyImpactComputed'
+    messages:
+      - $ref: '#/channels/dependencyImpactComputed/messages/DependencyImpactComputed'
+    bindings:
+      kafka:
+        groupId:
+          type: string
+          enum:
+            - release-assurance-evidence
+    x-owner-context: release-assurance
+    x-dead-letter-topic: dlt.release-assurance-evidence
+  consumeVehicleIdentityResolvedIntegration:
+    $ref: './data-readiness.yaml#/operations/consumeVehicleIdentityResolvedIntegration'
+  publishIntegrationRiskScored:
+    $ref: './integration.risk.scored.yaml#/operations/publishIntegrationRiskScored'
+  publishAuditEventRecorded:
+    action: send
+    summary: integration-intelligence records authorization failures and tenant mismatches through its outbox.
+    channel:
+      $ref: '#/channels/auditEventRecorded'
+    messages:
+      - $ref: '#/channels/auditEventRecorded/messages/AuditEventRecorded'
+    x-owner-context: integration-intelligence
+  publishDltIntegrationIntelligenceIdentity:
+    action: send
+    channel:
+      $ref: '#/channels/dltIntegrationIntelligenceIdentity'
+    messages:
+      - $ref: '#/channels/dltIntegrationIntelligenceIdentity/messages/DeadLetterRecord'
+    x-owner-context: integration-intelligence
+  publishDltIntegrationIntelligenceChange:
+    action: send
+    channel:
+      $ref: '#/channels/dltIntegrationIntelligenceChange'
+    messages:
+      - $ref: '#/channels/dltIntegrationIntelligenceChange/messages/DeadLetterRecord'
+    x-owner-context: integration-intelligence
+  publishDltIntegrationIntelligenceImpact:
+    action: send
+    channel:
+      $ref: '#/channels/dltIntegrationIntelligenceImpact'
+    messages:
+      - $ref: '#/channels/dltIntegrationIntelligenceImpact/messages/DeadLetterRecord'
+    x-owner-context: integration-intelligence
+components:
+  messages:
+    FirmwareChangeCommitted:
+      name: FirmwareChangeCommitted
+      title: Firmware change committed
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/KafkaHeaders'
+      payload:
+        $ref: '#/components/schemas/FirmwareChangeCommittedEnvelope'
+      bindings:
+        kafka:
+          key:
+            type: string
+            description: '"{tenantId}:{canonicalId}" (canonicalId = artifactCanonicalId)'
+    DependencyImpactComputed:
+      name: DependencyImpactComputed
+      title: Dependency impact computed
+      contentType: application/json
+      headers:
+        $ref: '#/components/schemas/KafkaHeaders'
+      payload:
+        $ref: '#/components/schemas/DependencyImpactComputedEnvelope'
+      bindings:
+        kafka:
+          key:
+            type: string
+            description: '"{tenantId}:{canonicalId}" (canonicalId = changedArtifactCanonicalId)'
+    DeadLetterRecord:
+      name: DeadLetterRecord
+      title: Dead-letter record
+      contentType: application/json
+      payload:
+        $ref: './common/dead-letter.yaml#/components/schemas/DeadLetterRecord'
+      bindings:
+        kafka:
+          key:
+            type: string
+            description: The Kafka key of the original record, unchanged.
+  schemas:
+    KafkaHeaders:
+      type: object
+      required:
+        - traceparent
+      properties:
+        traceparent:
+          type: string
+          description: W3C trace context.
+        tracestate:
+          type: string
+          description: W3C trace context vendor state.
+    FirmwareChangeCommittedEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+        - eventId
+        - eventType
+        - version
+        - tenantId
+        - occurredAt
+        - payload
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        eventType:
+          type: string
+          const: firmware.change.committed
+        version:
+          type: integer
+          const: 1
+        tenantId:
+          type: string
+          format: uuid
+        occurredAt:
+          type: string
+          format: date-time
+        payload:
+          $ref: '#/components/schemas/FirmwareChangeCommittedPayload'
+    FirmwareChangeCommittedPayload:
+      type: object
+      additionalProperties: false
+      required:
+        - firmwareChangeId
+        - artifactCanonicalId
+        - previousVersion
+        - newVersion
+        - origin
+        - committedAt
+      properties:
+        firmwareChangeId:
+          type: string
+          format: uuid
+        artifactCanonicalId:
+          type: string
+          format: uuid
+          description: Canonical_ID of the changed Canonical_Software_Artifact (Req 5.1).
+        previousVersion:
+          type: string
+          minLength: 1
+          maxLength: 64
+        newVersion:
+          type: string
+          minLength: 1
+          maxLength: 64
+        origin:
+          type: string
+          enum:
+            - gateway
+            - connector
+          description: Submitted through the API_Gateway or detected from a connector (Req 5.1).
+        committedAt:
+          type: string
+          format: date-time
+        commitId:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Source commit identifier, when known (Evidence_Chain).
+        firmwareBuildId:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: Firmware build identifier, when known (Evidence_Chain).
+    DependencyImpactComputedEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+        - eventId
+        - eventType
+        - version
+        - tenantId
+        - occurredAt
+        - payload
+      properties:
+        eventId:
+          type: string
+          format: uuid
+        eventType:
+          type: string
+          const: dependency.impact.computed
+        version:
+          type: integer
+          const: 1
+        tenantId:
+          type: string
+          format: uuid
+        occurredAt:
+          type: string
+          format: date-time
+        payload:
+          $ref: '#/components/schemas/DependencyImpactComputedPayload'
+    DependencyImpactComputedPayload:
+      type: object
+      additionalProperties: false
+      required:
+        - impactResultId
+        - firmwareChangeId
+        - changedArtifactCanonicalId
+        - maxDepth
+        - truncated
+        - computedAt
+        - affected
+      properties:
+        impactResultId:
+          type: string
+          format: uuid
+        firmwareChangeId:
+          type: string
+          format: uuid
+        changedArtifactCanonicalId:
+          type: string
+          format: uuid
+        maxDepth:
+          type: integer
+          minimum: 1
+          description: The configured maximum traversal depth (Req 5.5).
+        truncated:
+          type: boolean
+          description: True when the depth limit was reached before the frontier emptied (Req 5.5).
+        computedAt:
+          type: string
+          format: date-time
+        affected:
+          type: array
+          description: >-
+            Every directly and transitively affected entity with its dependency path and depth (Req 5.2,
+            5.3). Empty when nothing depends on the changed artifact.
+          items:
+            $ref: '#/components/schemas/AffectedEntity'
+    AffectedEntity:
+      type: object
+      additionalProperties: false
+      required:
+        - canonicalId
+        - entityType
+        - depth
+        - path
+      properties:
+        canonicalId:
+          type: string
+          format: uuid
+        entityType:
+          type: string
+          enum:
+            - ecu
+            - firmware-version
+            - calibration-file
+            - sensor
+            - cloud-service
+            - configuration-snapshot
+        depth:
+          type: integer
+          minimum: 1
+          description: Traversal depth; equals the number of path steps.
+        path:
+          type: array
+          minItems: 1
+          description: The relationships from the changed artifact to this entity, in order.
+          items:
+            $ref: '#/components/schemas/PathStep'
+    PathStep:
+      type: object
+      additionalProperties: false
+      required:
+        - fromCanonicalId
+        - relationship
+        - toCanonicalId
+      properties:
+        fromCanonicalId:
+          type: string
+          format: uuid
+        relationship:
+          type: string
+          enum:
+            - depends-on
+            - communicates-with
+            - calibrated-by
+            - installed-on
+        toCanonicalId:
+          type: string
+          format: uuid

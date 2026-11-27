@@ -1,0 +1,92 @@
+# Shared event envelope for every AsyncAPI contract in contracts/asyncapi/ (api-standards.md, ADR-017).
+#
+# This file is not an AsyncAPI document. It is the single source of truth for the envelope fields.
+# Each topic contract defines its envelope file-locally (JSON Schema draft-07 does not let
+# `additionalProperties: false` see properties that come in through `allOf`), and
+# contracts/tests/test_asyncapi_contracts.py checks that every file-local envelope matches this file:
+#   - every envelope has exactly the base fields below (same type, format, and required list),
+#     with `eventType` fixed to the topic name and `version` fixed to the schema version;
+#   - the five legacy-integration source topics (erp.masterdata.changed, erp.purchaseorder.updated,
+#     mes.workorder.reported, mes.quality.inspection.recorded, document.text.extracted) use the
+#     source-ingestion variant: the base fields plus the source-ingestion fields below;
+#   - no envelope carries `schemaVersion` or a trace-context body field. W3C `traceparent` and
+#     `tracestate` travel in Kafka record headers (KafkaHeaders).
+#
+# Partition keys: `{tenantId}:{canonicalId}` for platform events, `{tenantId}:{naturalKey}` for the four
+# ERP and MES topics, and `{tenantId}:{canonicalDocumentId}` for document.text.extracted.
+x-phase: 1
+components:
+  schemas:
+    KafkaHeaders:
+      type: object
+      required:
+        - traceparent
+      properties:
+        traceparent:
+          type: string
+          description: W3C trace context.
+        tracestate:
+          type: string
+          description: W3C trace context vendor state.
+    BaseEnvelope:
+      type: object
+      additionalProperties: false
+      required:
+        - eventId
+        - eventType
+        - version
+        - tenantId
+        - occurredAt
+        - payload
+      properties:
+        eventId:
+          type: string
+          format: uuid
+          description: Unique event identifier. Every consumer is idempotent on eventId (inbox keyed by eventId and tenantId).
+        eventType:
+          type: string
+          description: The topic name. Each topic contract fixes it with `const`.
+        version:
+          type: integer
+          description: Schema version of this event type. Each topic contract fixes it with `const`. An incompatible change needs a new version.
+        tenantId:
+          type: string
+          format: uuid
+          description: Owning tenant. Every Kafka message carries it (security.md).
+        occurredAt:
+          type: string
+          format: date-time
+          description: RFC 3339 time the change happened.
+        payload:
+          type: object
+          description: Event-specific payload, defined by each topic contract.
+    SourceIngestionFields:
+      description: >-
+        Fields that the source-ingestion envelope adds to BaseEnvelope on the five legacy-integration
+        source topics (api-standards.md, ADR-016, ADR-017). sourceSystem, naturalKey, contentHash, and
+        extractedAt are required; sourceRecordVersion is optional. naturalKey is built by the connector
+        from named source columns and is never supplied by the source; a topic contract may narrow its
+        pattern and documents its column composition.
+      type: object
+      required:
+        - sourceSystem
+        - naturalKey
+        - contentHash
+        - extractedAt
+      properties:
+        sourceSystem:
+          type: string
+          minLength: 1
+        naturalKey:
+          type: string
+          minLength: 3
+          maxLength: 512
+        contentHash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        extractedAt:
+          type: string
+          format: date-time
+        sourceRecordVersion:
+          type: integer
+          minimum: 1

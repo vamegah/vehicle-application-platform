@@ -90,6 +90,21 @@ class CleanTree(Case):
         self.assertEqual([str(v) for v in violations], [])
         self.assertTrue(any("skipped" in n for n in notes))
 
+    def test_tooling_manifest_alone_does_not_switch_on_the_unused_rule(self):
+        # Task 2.1: contracts/package.json and contracts/tests/requirements.txt exist before task 1.1.
+        for rel in (POM, DR, SIDECAR, WEB, COMPOSE, JAVA):
+            (self.root / rel).unlink()
+        self.write("contracts/package.json", '{"devDependencies": {"next": "16.4.6"}}')
+        violations, notes = check(self.root)
+        self.assertEqual([str(v) for v in violations], [])
+        self.assertTrue(any("skipped" in n for n in notes))
+
+    def test_tooling_manifest_is_still_pin_checked(self):
+        self.write("contracts/package.json", '{"devDependencies": {"next": "^16.4.6"}}')
+        self.assertFails("unpinned-version", "next")
+        self.write("contracts/tests/requirements.txt", "fastapi>=0.165.0\n")
+        self.assertFails("unpinned-version", "fastapi")
+
 
 class RangeOperators(Case):
     def test_caret_range_in_package_json(self):
