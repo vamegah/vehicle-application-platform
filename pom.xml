@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Root Maven aggregator (task 1.1). It only lists the Java bounded-context modules so that one
+  `mvn verify` builds and tests all of them; each module inherits from spring-boot-starter-parent itself.
+  The full one-command build of every module (Java, Python, web) is `python scripts/build`.
+  Use the pinned Maven from DEPENDENCIES.lock.md (3.9.16).
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.autoreliance</groupId>
+  <artifactId>autoreliance-platform</artifactId>
+  <version>0.1.0</version>
+  <packaging>pom</packaging>
+  <name>autoreliance-platform</name>
+
+  <modules>
+    <module>services/legacy-integration</module>
+    <module>services/integration-intelligence</module>
+    <module>services/configuration-assurance</module>
+    <module>services/release-assurance</module>
+    <module>services/api-gateway</module>
+    <module>services/audit-sink</module>
+  </modules>
+</project>

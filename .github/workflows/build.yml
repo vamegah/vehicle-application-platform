@@ -1,0 +1,42 @@
+name: build
+
+# Task 1.1. Builds and tests every module from a clean checkout with one command (`python scripts/build`):
+# the six Java bounded contexts (root Maven aggregator), the two Python components, and apps/web. Each context
+# smoke test starts the context alone and asserts its contracted health route returns 200. Also runs the
+# repository layout, toolchain, and Jackson 3 checks. Toolchain versions come from DEPENDENCIES.lock.md.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.1.0
+        with:
+          python-version: "3.12.16"
+      - uses: actions/setup-java@v6.3.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "24.22.3"
+      - name: Install Apache Maven 3.9.16 (sha512 from DEPENDENCIES.lock.md)
+        run: |
+          curl -fsSLo maven.tar.gz https://archive.apache.org/dist/maven/maven-3/3.9.16/binaries/apache-maven-3.9.16-bin.tar.gz \
+            || curl -fsSLo maven.tar.gz https://downloads.apache.org/maven/maven-3/3.9.16/binaries/apache-maven-3.9.16-bin.tar.gz
+          echo "831a8591fe20c8243b1dbe7d71e3244f31d1665b0804b2e825e38cbbe5ce0cafb8338851f90780735568773e0a6cd07bbec107cda0b896b008b861075358b6f6  maven.tar.gz" | sha512sum -c -
+          sudo tar -xzf maven.tar.gz -C /opt
+          sudo ln -sf /opt/apache-maven-3.9.16/bin/mvn /usr/local/bin/mvn
+          rm maven.tar.gz
+      - name: Repository layout, toolchain, and Jackson 3 checks
+        run: python -m unittest discover -s scripts/tests -p "test_repository_*.py" -v
+      - name: Build and test every module
+        run: python scripts/build

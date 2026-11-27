@@ -28,7 +28,7 @@ Repository conventions used by every task (from `structure.md`, `api-standards.m
 ## Tasks
 
 - [ ] 1. Monorepo scaffolding and local environment
-  - [ ] 1.1 Create the monorepo layout, build tooling, and context skeletons
+  - [x] 1.1 Create the monorepo layout, build tooling, and context skeletons
     - Depends on tasks 1.4, 2.1, 2.2, 2.3, 2.4, 2.6, 2.8, and 2.9, so every context directory this task creates under `services/` already has a contract in `contracts/` (contract-first rule in `structure.md`, enforced by the `verify-contract` hook).
     - Create `apps/web`, `services/data-readiness` (Python, `app/data_readiness/main.py`), `services/legacy-integration` (Java, `src/main/java/com/autoreliance/legacyintegration/`), `services/integration-intelligence`, `services/configuration-assurance`, `services/release-assurance`, `services/release-assurance/inference-sidecar` (Python, `app/release_assurance/main.py`), `services/api-gateway`, `services/audit-sink`, `libs/` (shared Java and Python libraries), `contracts/{asyncapi,openapi,proto}`, `platform/{deployables,k8s/base,k8s/overlays/dev,k8s/overlays/staging,terraform}`, and `.github/workflows/`.
     - Add Maven (`pom.xml`, Java 21, Spring Boot 4.1.x with the Spring Cloud 2025.1.x BOM) for Java modules, `pyproject.toml` (Python 3.12) for Python modules, and `package.json` (web) using only the exact versions recorded by task 1.4, plus a root task runner that builds and tests every module.

@@ -1,0 +1,32 @@
+# data-readiness bounded context (task 1.1 skeleton). Python 3.12, FastAPI.
+# Every version is an exact pin with a row in DEPENDENCIES.lock.md.
+# Contract: contracts/openapi/data-readiness.yaml (health route GET /api/v1/data-readiness/health).
+
+[build-system]
+requires = ["setuptools==84.2.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "autoreliance-data-readiness"
+version = "0.1.0"
+description = "AutoReliance AI data-readiness bounded context"
+requires-python = "==3.12.*"
+dependencies = [
+    "fastapi==0.165.0",
+    "pydantic==2.14.4",
+    "uvicorn==0.54.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "httpx==0.29.0",
+    "pytest==9.2.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-p no:cacheprovider"

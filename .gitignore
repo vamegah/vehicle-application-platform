@@ -1,0 +1,13 @@
+# Build and tool outputs (task 1.1). Generated clients under contracts/ are committed; build artifacts are not.
+target/
+.venv/
+*.egg-info/
+build/
+dist/
+node_modules/
+.next/
+next-env.d.ts
+*.tsbuildinfo
+__pycache__/
+*.pyc
+.pytest_cache/

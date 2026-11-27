@@ -1,0 +1,187 @@
+#!/usr/bin/env python3
+"""Root task runner (task 1.1): build and test every module with one command.
+
+    python scripts/build                  # Java, Python, and web, in that order
+    python scripts/build --only python    # one group (java, python, web); repeat --only for more
+
+Standard library only. It checks the toolchain against DEPENDENCIES.lock.md before building:
+Java 21, the pinned Apache Maven, Python 3.12 for the Python modules, and the pinned Node.
+
+  java    `mvn -B -ntp verify` on the root aggregator pom.xml (all Java bounded contexts).
+  python  for each Python module: a .venv made with the Python 3.12 interpreter, `pip install -e .[test]`,
+          then pytest. The interpreter is --python, else $AR_PYTHON312, else the interpreter running this script.
+  web     `npm ci`, `npm test`, and `npm run build` in apps/web.
+
+Maven is --mvn, else $MVN, else `mvn` on PATH. Exit status is 0 only when every step passes.
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+LEDGER = ROOT / "DEPENDENCIES.lock.md"
+
+JAVA_MODULES = (
+    "services/legacy-integration",
+    "services/integration-intelligence",
+    "services/configuration-assurance",
+    "services/release-assurance",
+    "services/api-gateway",
+    "services/audit-sink",
+)
+PYTHON_MODULES = (
+    "services/data-readiness",
+    "services/release-assurance/inference-sidecar",
+)
+WEB_MODULES = ("apps/web",)
+GROUPS = ("java", "python", "web")
+
+
+class BuildError(RuntimeError):
+    pass
+
+
+def ledger_toolchain(ledger_text: str) -> dict[str, str]:
+    """Toolchain versions from the 'Build and CI tooling' rows of the ledger."""
+    wanted = {
+        "maven": r"^\| Apache Maven \(build and CI\) \| ([^|]+) \|",
+        "python": r"^\| Python \(toolchain\) \| ([^|]+) \|",
+        "node": r"^\| Node \(toolchain\) \| ([^|]+) \|",
+        "java": r"^\| Java \(toolchain\) \| ([^|]+) \|",
+    }
+    found: dict[str, str] = {}
+    for key, pattern in wanted.items():
+        m = re.search(pattern, ledger_text, re.MULTILINE)
+        if not m:
+            raise BuildError(f"DEPENDENCIES.lock.md has no toolchain row for {key}")
+        found[key] = m.group(1).strip()
+    return found
+
+
+def run(cmd: list[str], cwd: Path, env: dict[str, str] | None = None) -> None:
+    print(f"\n==> [{cwd.relative_to(ROOT).as_posix() or '.'}] {' '.join(cmd)}", flush=True)
+    proc = subprocess.run(cmd, cwd=cwd, env=env)
+    if proc.returncode != 0:
+        raise BuildError(f"command failed with exit code {proc.returncode}: {' '.join(cmd)} (in {cwd})")
+
+
+def capture(cmd: list[str]) -> str:
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
+    except OSError as e:
+        raise BuildError(f"cannot run {cmd[0]}: {e}") from e
+    return proc.stdout + proc.stderr
+
+
+def which(name: str, override: str | None) -> str:
+    if override:
+        return override
+    found = shutil.which(name)
+    if not found:
+        raise BuildError(f"{name} not found on PATH")
+    return found
+
+
+# ----------------------------------------------------------------------------- toolchain checks
+
+
+def check_java(tool: dict[str, str]) -> None:
+    out = capture(["java", "-version"])
+    m = re.search(r'version "(\d+)', out)
+    if not m or m.group(1) != tool["java"]:
+        raise BuildError(f"Java {tool['java']} is required (ledger); `java -version` reports: {out.strip().splitlines()[0] if out.strip() else 'nothing'}")
+
+
+def check_maven(mvn: str, tool: dict[str, str]) -> None:
+    out = capture([mvn, "-v"])
+    m = re.search(r"Apache Maven (\S+)", out)
+    if not m or m.group(1) != tool["maven"]:
+        raise BuildError(f"Apache Maven {tool['maven']} is required (ledger); {mvn} reports {m.group(1) if m else out.strip()[:200]}")
+
+
+def python_minor(version: str) -> str:
+    return ".".join(version.split(".")[:2])
+
+
+def check_python(python: str, tool: dict[str, str]) -> None:
+    out = capture([python, "-c", "import sys; print('%d.%d.%d' % sys.version_info[:3])"]).strip()
+    if python_minor(out) != python_minor(tool["python"]):
+        raise BuildError(f"Python {python_minor(tool['python'])} is required (ledger {tool['python']}); {python} is {out or 'not runnable'}")
+
+
+def check_node(tool: dict[str, str]) -> None:
+    out = capture(["node", "--version"]).strip()
+    if out.lstrip("v") != tool["node"]:
+        raise BuildError(f"Node {tool['node']} is required (ledger); `node --version` reports {out or 'nothing'}")
+
+
+# ----------------------------------------------------------------------------- groups
+
+
+def build_java(args, tool: dict[str, str]) -> None:
+    mvn = which("mvn", args.mvn or os.environ.get("MVN"))
+    check_java(tool)
+    check_maven(mvn, tool)
+    run([mvn, "-B", "-ntp", "verify"], ROOT)
+
+
+def venv_python(venv: Path) -> Path:
+    return venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+
+
+def build_python(args, tool: dict[str, str]) -> None:
+    python = args.python or os.environ.get("AR_PYTHON312") or sys.executable
+    check_python(python, tool)
+    for rel in PYTHON_MODULES:
+        module = ROOT / rel
+        venv = module / ".venv"
+        vpy = venv_python(venv)
+        if vpy.exists():
+            try:
+                check_python(str(vpy), tool)
+            except BuildError:
+                shutil.rmtree(venv)
+        if not vpy.exists():
+            run([python, "-m", "venv", str(venv)], module)
+        run([str(vpy), "-m", "pip", "install", "--disable-pip-version-check", "-q", "-e", ".[test]"], module)
+        run([str(vpy), "-m", "pytest", "-q"], module)
+
+
+def build_web(args, tool: dict[str, str]) -> None:
+    check_node(tool)
+    npm = which("npm", None)
+    env = dict(os.environ, NEXT_TELEMETRY_DISABLED="1")
+    for rel in WEB_MODULES:
+        module = ROOT / rel
+        run([npm, "ci", "--no-audit", "--no-fund"], module, env)
+        run([npm, "test"], module, env)
+        run([npm, "run", "build"], module, env)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="build", description="Build and test every module (task 1.1).")
+    parser.add_argument("--only", action="append", choices=GROUPS, help="build only this group (repeatable)")
+    parser.add_argument("--python", help="Python 3.12 interpreter for the Python modules")
+    parser.add_argument("--mvn", help="Maven executable")
+    args = parser.parse_args(argv)
+    groups = args.only or list(GROUPS)
+    try:
+        tool = ledger_toolchain(LEDGER.read_text(encoding="utf-8"))
+        for group in GROUPS:
+            if group in groups:
+                {"java": build_java, "python": build_python, "web": build_web}[group](args, tool)
+    except BuildError as e:
+        print(f"\nbuild: FAILED: {e}", file=sys.stderr)
+        return 1
+    print(f"\nbuild: OK ({', '.join(g for g in GROUPS if g in groups)})")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

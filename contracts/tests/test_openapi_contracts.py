@@ -386,6 +386,47 @@ class StandardsLint(FixtureCase):
         problems = ol.lint_operation_ids(ol.Resolver(), [a, b])
         self.assertTrue(any(p.startswith("operation-id:") for p in problems), problems)
 
+class HealthProbes(unittest.TestCase):
+    """Task 1.1: every context directory under services/ has exactly one contracted internal health probe."""
+
+    EXPECTED = {
+        "data-readiness.yaml": "/api/v1/data-readiness/health",
+        "legacy-integration.yaml": "/api/v1/legacy-integration/health",
+        "integration-intelligence.yaml": "/api/v1/integration-intelligence/health",
+        "configuration-assurance.yaml": "/api/v1/configuration-assurance/health",
+        "release-assurance.yaml": "/api/v1/release-assurance/health",
+        "release-assurance-sidecar.yaml": "/api/v1/release-assurance/internal/sidecar-health",
+        "api-gateway.yaml": "/api/v1/api-gateway/health",
+        "audit-sink.yaml": "/api/v1/audit/health",
+    }
+
+    def test_each_context_has_one_internal_health_probe_at_its_path(self):
+        resolver = ol.Resolver()
+        for name, path in self.EXPECTED.items():
+            with self.subTest(file=name):
+                probes = [(p, m, op) for p, m, _, op, _ in ol.iter_operations(resolver, OPENAPI / name)
+                          if op.get("x-health-check") is True]
+                self.assertEqual([(p, m) for p, m, _ in probes], [(path, "get")])
+                op = probes[0][2]
+                self.assertIs(op.get("x-internal-only"), True)
+                self.assertEqual(op.get("security"), [])
+                schema = op["responses"]["200"]["content"]["application/json"]["schema"]
+                self.assertEqual(schema, {"$ref": f"{C}/schemas/Health"})
+
+
+class GatewayHealthPathLint(FixtureCase):
+    def _probe(self) -> dict:
+        return {"get": {"operationId": "fixtureHealth", "summary": "fixture", "tags": ["fixture"],
+                        "x-internal-only": True, "x-health-check": True, "security": [],
+                        "responses": {"200": {"description": "ok", "content": {"application/json": {
+                            "schema": {"$ref": f"{C}/schemas/Health"}}}}}}}
+
+    def test_api_gateway_context_is_allowed_in_the_gateway_file(self):
+        problems = self.lint({"/api/v1/api-gateway/health": self._probe()}, "api-gateway.yaml")
+        self.assertFalse([p for p in problems if p.startswith("base-path")], problems)
+
+    def test_api_gateway_context_is_rejected_in_another_file(self):
+        self.assertRule(self.lint({"/api/v1/api-gateway/health": self._probe()}, "data-readiness.yaml"), "base-path")
 
 if __name__ == "__main__":
     unittest.main()

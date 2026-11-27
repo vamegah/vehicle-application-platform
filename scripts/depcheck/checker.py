@@ -619,7 +619,9 @@ def check(root: Path, ledger_path: Path | None = None) -> tuple[list[Violation],
                 continue
             if "planned (task" in row.notes.lower():
                 continue
-            if boot_used and "boot-managed" in row.notes.lower():
+            # A Boot-managed row is one whose Notes start with "Boot-managed"; a row that only mentions the
+            # Boot-managed platform in its prose (for example jqwik or Pact JVM) is not exempt.
+            if boot_used and row.notes.lstrip().lower().startswith("boot-managed"):
                 continue
             if not any(n.lower() in used_real or norm_py(n) in used_real for n in row.names):
                 violations.append(Violation("ledger-unused", ledger_file.name, f"row '{', '.join(row.names)}' has no manifest entry; remove it, mark it 'Phase 2+, not used in Phase 1' in the not-used section, or add 'Planned (task N.M)' to its Notes"))
