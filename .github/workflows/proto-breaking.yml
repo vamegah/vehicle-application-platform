@@ -1,0 +1,54 @@
+name: proto-breaking
+
+# Task 2.6 (ADR-003: buf is mandatory). On every change under contracts/proto/, run `buf lint` and
+# `buf breaking --against .git#branch=main`. This enforces "new package version, never mutate v1" (Req 13.11):
+# a removed, renumbered, renamed, or retyped element of a v1 package fails the build, with the file and rule
+# printed; a new v2 package passes. buf is the version pinned in DEPENDENCIES.lock.md, checksum-verified.
+
+on:
+  pull_request:
+    paths:
+      - "contracts/proto/**"
+      - "buf.yaml"
+      - "contracts/tools/check_proto.py"
+      - ".github/workflows/proto-breaking.yml"
+  push:
+    paths:
+      - "contracts/proto/**"
+      - "buf.yaml"
+      - "contracts/tools/check_proto.py"
+      - ".github/workflows/proto-breaking.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  buf-breaking:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          # Full history, so the main branch and its commits are available to buf.
+          fetch-depth: 0
+      - uses: actions/setup-python@v7.1.0
+        with:
+          python-version: "3.12.16"
+      - name: Install buf 1.75.0 (sha256 from the bufbuild release, recorded in DEPENDENCIES.lock.md)
+        run: |
+          curl -fsSLo buf https://github.com/bufbuild/buf/releases/download/v1.75.0/buf-Linux-x86_64
+          echo "fad1e38d6909bbb583a4da81d8c02a01046e2cd663bde7e337dd24277393764b  buf" | sha256sum -c -
+          chmod +x buf
+          sudo mv buf /usr/local/bin/buf
+          buf --version
+      - name: Make the main branch available as a local branch
+        if: github.ref != 'refs/heads/main'
+        # A pull request checkout is a detached merge commit, so buf's .git#branch=main input needs a local main.
+        run: git branch --force main origin/main
+      - name: buf lint and buf breaking against main
+        if: github.ref != 'refs/heads/main'
+        run: python contracts/tools/check_proto.py --against '.git#branch=main'
+      - name: buf lint and buf breaking against the previous main commit (push to main)
+        if: github.ref == 'refs/heads/main'
+        # On main itself, compare with the first parent, the main that existed before this push.
+        run: python contracts/tools/check_proto.py --against '.git#ref=HEAD~1'

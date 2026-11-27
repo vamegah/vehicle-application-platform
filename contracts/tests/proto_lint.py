@@ -74,14 +74,26 @@ def lint_text(context_dir: str, text: str, filename: str = "<text>") -> list[str
 
 
 def lint_tree(proto_root: Path) -> list[str]:
+    """Layout: v1 files live directly in contracts/proto/<context>/ (where the verify-contract hook looks);
+    a v<N> package with N >= 2 lives in contracts/proto/<context>/v<N>/, because buf's DIRECTORY_SAME_PACKAGE
+    rule forbids two packages in one directory."""
     problems: list[str] = []
     files = sorted(proto_root.rglob("*.proto"))
     if not files:
         problems.append(f"{proto_root}: no .proto files")
     for path in files:
         rel = path.relative_to(proto_root)
-        if len(rel.parts) != 2:
-            problems.append(f"{rel.as_posix()}: proto files live directly in contracts/proto/<context>/")
+        text = path.read_text(encoding="utf-8")
+        package = PACKAGE_RE.findall(_strip_comments(text))
+        version = re.search(r"\.v([0-9]+)$", package[0]).group(1) if len(package) == 1 and re.search(r"\.v[0-9]+$", package[0]) else None
+        if len(rel.parts) == 2:
+            if version not in (None, "1"):
+                problems.append(f"{rel.as_posix()}: package v{version} belongs in contracts/proto/{rel.parts[0]}/v{version}/")
+        elif len(rel.parts) == 3 and re.fullmatch(r"v[2-9][0-9]*|v[1-9][0-9]+", rel.parts[1]):
+            if version is not None and rel.parts[1] != f"v{version}":
+                problems.append(f"{rel.as_posix()}: package v{version} does not match directory {rel.parts[1]}/")
+        else:
+            problems.append(f"{rel.as_posix()}: proto files live in contracts/proto/<context>/ (v1) or contracts/proto/<context>/v<N>/ (N >= 2)")
             continue
-        problems += lint_text(rel.parts[0], path.read_text(encoding="utf-8"), rel.as_posix())
+        problems += lint_text(rel.parts[0], text, rel.as_posix())
     return problems

@@ -24,6 +24,13 @@ GRAPH = PROTO / "integration-intelligence" / "graph_facts.proto"
 PINNED_BUF = "1.75.0"
 
 
+def v2_text() -> str:
+    """The configuration validation contract as a v2 package (for the new-major-version fixtures)."""
+    text = CONFIG.read_text(encoding="utf-8")
+    return (text.replace("autoreliance.configuration.v1", "autoreliance.configuration.v2")
+                .replace("com.autoreliance.contracts.configuration.v1", "com.autoreliance.contracts.configuration.v2"))
+
+
 def _buf() -> str | None:
     return os.environ.get("BUF") or shutil.which("buf")
 
@@ -68,6 +75,21 @@ class RepositoryProtoLint(unittest.TestCase):
     def test_v2_package_in_the_right_directory_passes(self):
         text = CONFIG.read_text(encoding="utf-8").replace("autoreliance.configuration.v1", "autoreliance.configuration.v2")
         self.assertEqual(proto_lint.lint_text("configuration-assurance", text), [])
+
+    def test_v2_package_layout_rules(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "proto"
+            shutil.copytree(PROTO, root)
+            ctx = root / "configuration-assurance"
+            (ctx / "v2").mkdir()
+            (ctx / "v2" / "config_validation.proto").write_text(v2_text(), encoding="utf-8")
+            self.assertEqual(proto_lint.lint_tree(root), [])
+            (ctx / "v3").mkdir()
+            (ctx / "v3" / "config_validation.proto").write_text(v2_text(), encoding="utf-8")
+            self.assertTrue(any("does not match directory v3" in p for p in proto_lint.lint_tree(root)))
+            shutil.rmtree(ctx / "v3")
+            (ctx / "config_validation_v2.proto").write_text(v2_text(), encoding="utf-8")
+            self.assertTrue(any("belongs in contracts/proto/configuration-assurance/v2/" in p for p in proto_lint.lint_tree(root)))
 
     def test_unknown_context_directory_fails(self):
         self.assertTrue(proto_lint.lint_text("quality-intelligence", CONFIG.read_text(encoding="utf-8")))
@@ -147,14 +169,24 @@ class BufBreaking(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
 
     def test_adding_a_new_v2_package_passes(self):
-        v2 = self.changed / "contracts" / "proto" / "configuration-assurance" / "config_validation_v2.proto"
-        text = CONFIG.read_text(encoding="utf-8").replace("autoreliance.configuration.v1", "autoreliance.configuration.v2")
-        text = text.replace("com.autoreliance.contracts.configuration.v1", "com.autoreliance.contracts.configuration.v2")
-        text = text.replace("ConfigValidationProto", "ConfigValidationV2Proto")
-        v2.write_text(text, encoding="utf-8")
+        """A v2 package lives in contracts/proto/<context>/v2/ and passes buf breaking, buf lint, and the repository rules."""
+        v2 = self.changed / "contracts" / "proto" / "configuration-assurance" / "v2" / "config_validation.proto"
+        v2.parent.mkdir()
+        v2.write_text(v2_text(), encoding="utf-8")
         proc = self._breaking()
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        proc = _run_buf("lint", cwd=self.changed)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertEqual(proto_lint.lint_tree(self.changed / "contracts" / "proto"), [])
+
+    def test_a_v2_package_next_to_v1_fails_buf_lint(self):
+        """buf's DIRECTORY_SAME_PACKAGE rule: two packages cannot share a directory."""
+        v2 = self.changed / "contracts" / "proto" / "configuration-assurance" / "config_validation_v2.proto"
+        v2.write_text(v2_text(), encoding="utf-8")
+        proc = _run_buf("lint", "--error-format=msvs", cwd=self.changed)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("DIRECTORY_SAME_PACKAGE", proc.stdout + proc.stderr)
+        self.assertTrue(proto_lint.lint_tree(self.changed / "contracts" / "proto"))
 
 
 if __name__ == "__main__":
