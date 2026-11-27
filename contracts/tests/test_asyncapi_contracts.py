@@ -57,7 +57,8 @@ class GoldenExamples(unittest.TestCase):
         names = {p.stem for p in cl.golden_files()}
         for topic in ("vehicle.identity.resolved", "firmware.change.committed", "dependency.impact.computed",
                       "config.validation.completed", "test.result.recorded", "release.evidence.gap.detected",
-                      "audit.event.recorded", "dlt.legacy-integration-extraction"):
+                      "audit.event.recorded", "dlt.legacy-integration-extraction",
+                      "integration.risk.scored", "configuration.risk.scored", "release.risk.scored"):
             self.assertIn(topic, names)
 
     def test_valid_samples_pass_and_mutations_fail(self):
