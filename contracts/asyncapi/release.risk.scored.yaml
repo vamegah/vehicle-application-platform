@@ -112,6 +112,7 @@ components:
         - scoringVersion
         - decisionSupportOnly
         - inputs
+        - unavailableInputs
         - citations
       properties:
         releaseCandidateId:
@@ -137,6 +138,18 @@ components:
           description: Output is decision support and never a certification.
         inputs:
           $ref: '#/components/schemas/ReleaseRiskInputs'
+        unavailableInputs:
+          type: array
+          uniqueItems: true
+          description: >-
+            Inputs that were unavailable when the score was computed. Each contributes zero to the score and is
+            listed here, so a low score caused by missing evidence is visible (design: Release_Risk_Scorer).
+          items:
+            type: string
+            enum:
+              - integration-risk
+              - configuration-risk
+              - configuration-validation
         citations:
           type: array
           minItems: 1

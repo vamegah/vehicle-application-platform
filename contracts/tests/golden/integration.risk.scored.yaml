@@ -1,0 +1,80 @@
+# Golden examples for integration.risk.scored (contracts/asyncapi/integration.risk.scored.yaml, task 2.2).
+# All values are fictional.
+doc: integration.risk.scored.yaml
+message: IntegrationRiskScored
+valid:
+  scored:
+    eventId: 4a1b2c3d-5e6f-4a7b-8c9d-0e1f2a3b4c01
+    eventType: integration.risk.scored
+    version: 1
+    tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    occurredAt: '2026-11-26T09:00:03Z'
+    payload:
+      firmwareChangeId: 9d8c7b6a-5f4e-4d3c-8b2a-190f8e7d6c5b
+      artifactCanonicalId: 2a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d
+      score: 62.5
+      confidence: 0.8
+      estimate: true
+      requiresHumanReview: true
+      modelVersion: fic-risk-2026.11
+      factors:
+        - name: affected-node-count
+          weight: 0.5
+          contribution: 40
+          available: true
+          supportingIds: [5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a]
+        - name: historical-defect-correlation
+          weight: 0.3
+          available: false
+      citations:
+        - type: graph-entity
+          id: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+  boundaryScores:
+    eventId: 4a1b2c3d-5e6f-4a7b-8c9d-0e1f2a3b4c02
+    eventType: integration.risk.scored
+    version: 1
+    tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    occurredAt: '2026-11-26T09:00:03Z'
+    payload:
+      firmwareChangeId: 9d8c7b6a-5f4e-4d3c-8b2a-190f8e7d6c5c
+      artifactCanonicalId: 2a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d
+      score: 100
+      confidence: 0
+      estimate: true
+      requiresHumanReview: true
+      modelVersion: fic-risk-2026.11
+      factors: []
+      citations:
+        - type: evidence-item
+          id: 7a8b9c0d-1e2f-4a3b-8c4d-5e6f7a8b9c0d
+invalid:
+  - name: score 101
+    base: scored
+    set: { payload.score: 101 }
+  - name: score -1
+    base: scored
+    set: { payload.score: -1 }
+  - name: empty citations
+    base: scored
+    set: { payload.citations: [] }
+  - name: missing estimate
+    base: scored
+    remove: [payload.estimate]
+  - name: estimate false
+    base: scored
+    set: { payload.estimate: false }
+  - name: requiresHumanReview false
+    base: scored
+    set: { payload.requiresHumanReview: false }
+  - name: missing requiresHumanReview
+    base: scored
+    remove: [payload.requiresHumanReview]
+  - name: negative factor contribution
+    base: scored
+    set: { payload.factors.0.contribution: -5 }
+  - name: unknown citation type
+    base: scored
+    set: { payload.citations.0.type: guess }
+  - name: confidence above 1
+    base: scored
+    set: { payload.confidence: 1.5 }

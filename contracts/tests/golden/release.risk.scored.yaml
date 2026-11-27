@@ -1,0 +1,80 @@
+# Golden examples for release.risk.scored (contracts/asyncapi/release.risk.scored.yaml, task 2.2).
+# All values are fictional.
+doc: release.risk.scored.yaml
+message: ReleaseRiskScored
+valid:
+  allInputsAvailable:
+    eventId: 6c3d4e5f-7a8b-4c9d-8e0f-1a2b3c4d5e01
+    eventType: release.risk.scored
+    version: 1
+    tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    occurredAt: '2026-11-26T10:01:05Z'
+    payload:
+      releaseCandidateId: 9b0c1d2e-3f4a-4b5c-8d6e-7f8a9b0c1d2e
+      softwareArtifactCanonicalId: 2a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d
+      score: 58
+      policyVersion: policy-2026.11.1
+      scoringVersion: release-risk-1
+      decisionSupportOnly: true
+      inputs:
+        evidenceScoreId: 0c1d2e3f-4a5b-4c6d-9e7f-8a9b0c1d2e3f
+        evidenceSufficiencyScore: 64
+        openGapIds: [1d2e3f4a-5b6c-4d7e-8f8a-9b0c1d2e3f4a]
+        integrationRiskEvidenceItemId: 2e3f4a5b-6c7d-4e8f-9a0b-1c2d3e4f5a6b
+        configurationRiskEvidenceItemId: 3f4a5b6c-7d8e-4f9a-8b1c-2d3e4f5a6b7c
+      unavailableInputs: []
+      citations:
+        - type: evidence-score
+          id: 0c1d2e3f-4a5b-4c6d-9e7f-8a9b0c1d2e3f
+        - type: evidence-gap
+          id: 1d2e3f4a-5b6c-4d7e-8f8a-9b0c1d2e3f4a
+  configurationRiskUnavailable:
+    eventId: 6c3d4e5f-7a8b-4c9d-8e0f-1a2b3c4d5e02
+    eventType: release.risk.scored
+    version: 1
+    tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    occurredAt: '2026-11-26T10:01:05Z'
+    payload:
+      releaseCandidateId: 9b0c1d2e-3f4a-4b5c-8d6e-7f8a9b0c1d2e
+      softwareArtifactCanonicalId: 2a3b4c5d-6e7f-4a8b-9c0d-1e2f3a4b5c6d
+      score: 0
+      policyVersion: policy-2026.11.1
+      scoringVersion: release-risk-1
+      decisionSupportOnly: true
+      inputs:
+        evidenceScoreId: 0c1d2e3f-4a5b-4c6d-9e7f-8a9b0c1d2e3f
+        evidenceSufficiencyScore: 100
+        openGapIds: []
+        integrationRiskEvidenceItemId: 2e3f4a5b-6c7d-4e8f-9a0b-1c2d3e4f5a6b
+      unavailableInputs: [configuration-risk]
+      citations:
+        - type: evidence-score
+          id: 0c1d2e3f-4a5b-4c6d-9e7f-8a9b0c1d2e3f
+invalid:
+  - name: score 101
+    base: allInputsAvailable
+    set: { payload.score: 101 }
+  - name: score -1
+    base: allInputsAvailable
+    set: { payload.score: -1 }
+  - name: empty citations
+    base: allInputsAvailable
+    set: { payload.citations: [] }
+  - name: missing decisionSupportOnly
+    base: allInputsAvailable
+    remove: [payload.decisionSupportOnly]
+  - name: decisionSupportOnly false
+    base: allInputsAvailable
+    set: { payload.decisionSupportOnly: false }
+  - name: missing unavailableInputs
+    base: allInputsAvailable
+    remove: [payload.unavailableInputs]
+  - name: unknown unavailable input
+    base: configurationRiskUnavailable
+    set: { payload.unavailableInputs: [weather] }
+  - name: missing evidence score in the inputs
+    base: allInputsAvailable
+    remove: [payload.inputs.evidenceScoreId]
+  - name: certification claim field
+    base: allInputsAvailable
+    set: { payload.certified: true }

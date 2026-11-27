@@ -166,8 +166,16 @@ components:
         citations:
           type: array
           minItems: 1
+          description: >-
+            At least one citation is a rule result that produced the score (Req 7.10); graph entities and
+            Evidence_Items may be cited as well.
           items:
             $ref: '#/components/schemas/ConfigurationRiskCitation'
+          contains:
+            type: object
+            properties:
+              type:
+                const: rule-result
     ConfigurationRuleFactor:
       type: object
       additionalProperties: false

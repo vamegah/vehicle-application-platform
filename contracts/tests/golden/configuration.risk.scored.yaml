@@ -1,0 +1,75 @@
+# Golden examples for configuration.risk.scored (contracts/asyncapi/configuration.risk.scored.yaml, task 2.2).
+# All values are fictional.
+doc: configuration.risk.scored.yaml
+message: ConfigurationRiskScored
+valid:
+  scored:
+    eventId: 5b2c3d4e-6f7a-4b8c-9d0e-1f2a3b4c5d01
+    eventType: configuration.risk.scored
+    version: 1
+    tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    occurredAt: '2026-11-26T09:00:06Z'
+    payload:
+      snapshotCanonicalId: 3b4c5d6e-7f8a-4b9c-8d0e-1f2a3b4c5d6e
+      validationResultId: 6e7f8a9b-0c1d-4e2f-9a3b-4c5d6e7f8a9b
+      ruleSetVersion: rs-2026.11.1
+      score: 45
+      confidence: 0.7
+      estimate: true
+      requiresHumanReview: true
+      modelVersion: fic-config-risk-1
+      ruleFactors:
+        - ruleId: FIC-RULE-HW-001
+          ruleResultId: 7f8a9b0c-1d2e-4f3a-8b4c-5d6e7f8a9b0c
+          status: fail
+          weight: 0.6
+          contribution: 40
+        - ruleId: FIC-RULE-CAL-001
+          ruleResultId: 7f8a9b0c-1d2e-4f3a-8b4c-5d6e7f8a9b0d
+          status: not-evaluable
+          weight: 0.2
+          contribution: 5
+        - ruleId: FIC-RULE-REG-001
+          ruleResultId: 7f8a9b0c-1d2e-4f3a-8b4c-5d6e7f8a9b0e
+          status: pass
+          weight: 0.2
+          contribution: 0
+      citations:
+        - type: rule-result
+          id: 7f8a9b0c-1d2e-4f3a-8b4c-5d6e7f8a9b0c
+        - type: graph-entity
+          id: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a
+invalid:
+  - name: score 101
+    base: scored
+    set: { payload.score: 101 }
+  - name: score -1
+    base: scored
+    set: { payload.score: -1 }
+  - name: empty citations
+    base: scored
+    set: { payload.citations: [] }
+  - name: citations without a rule result
+    base: scored
+    set: { payload.citations: [{ type: graph-entity, id: 5d6e7f8a-9b0c-4d1e-8f2a-3b4c5d6e7f8a }] }
+  - name: missing estimate
+    base: scored
+    remove: [payload.estimate]
+  - name: estimate false
+    base: scored
+    set: { payload.estimate: false }
+  - name: requiresHumanReview false
+    base: scored
+    set: { payload.requiresHumanReview: false }
+  - name: missing ruleSetVersion
+    base: scored
+    remove: [payload.ruleSetVersion]
+  - name: rule factor without status
+    base: scored
+    remove: [payload.ruleFactors.0.status]
+  - name: rule factor with an unknown status
+    base: scored
+    set: { payload.ruleFactors.0.status: skipped }
+  - name: negative rule contribution
+    base: scored
+    set: { payload.ruleFactors.1.contribution: -1 }
