@@ -58,7 +58,8 @@ class GoldenExamples(unittest.TestCase):
         for topic in ("vehicle.identity.resolved", "firmware.change.committed", "dependency.impact.computed",
                       "config.validation.completed", "test.result.recorded", "release.evidence.gap.detected",
                       "audit.event.recorded", "dlt.legacy-integration-extraction",
-                      "integration.risk.scored", "configuration.risk.scored", "release.risk.scored"):
+                      "integration.risk.scored", "configuration.risk.scored", "release.risk.scored",
+                      "document.text.extracted"):
             self.assertIn(topic, names)
 
     def test_valid_samples_pass_and_mutations_fail(self):

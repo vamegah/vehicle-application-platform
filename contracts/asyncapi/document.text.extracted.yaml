@@ -61,6 +61,22 @@ info:
   x-phase: 1
   x-owner-context: legacy-integration
   x-text-inline-max-bytes: 65536
+  # Deterministic identifiers (RFC 9562 UUIDv5, SHA-1). The name is the UTF-8 string below with each field in
+  # its canonical form: UUIDs lowercase, SHA-256 lowercase hex, other fields as in the envelope. Fields are
+  # joined with "|". Producers and consumers derive the same value; the contract tests check the golden
+  # examples against these rules (contracts/tests/document_rules.py).
+  x-event-id:
+    algorithm: uuid5
+    namespace: 8f3fe46b-2e15-4f9a-9edc-92db17782478
+    name: '{tenantId}|{canonicalDocumentId}|{contentSha256}'
+    description: The idempotency key (tenantId, canonicalDocumentId, contentSha256).
+  x-canonical-document-id:
+    algorithm: uuid5
+    namespace: 6a989323-5593-4151-a580-cea41ce243ab
+    name: '{tenantId}|{sourceSystem}|{sourceDocKey}'
+    description: >-
+      Assigned by legacy-integration at discovery from the tenant, the source system, and the document's key in
+      the source (SOURCE_DOC_KEY, the second segment of naturalKey before percent-decoding).
 defaultContentType: application/json
 servers:
   kafka:
@@ -218,10 +234,21 @@ components:
         - textSizeBytes
         - extractorVersion
       oneOf:
-        - required:
+        - description: Inline text, without textUri. The UTF-8 size is at most 65536 bytes.
+          required:
             - extractedText
-        - required:
+          not:
+            required:
+              - textUri
+          properties:
+            textSizeBytes:
+              maximum: 65536
+        - description: Text stored in the text bucket, without extractedText.
+          required:
             - textUri
+          not:
+            required:
+              - extractedText
       properties:
         canonicalDocumentId:
           type: string

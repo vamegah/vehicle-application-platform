@@ -226,6 +226,13 @@ def _split_path(path: str) -> list:
     return [int(p) if p.isdigit() else p for p in path.split(".")]
 
 
+def _expand(value):
+    """`{$repeat: <string>, times: <n>}` builds a long string, for size-limit fixtures."""
+    if isinstance(value, dict) and set(value) == {"$repeat", "times"}:
+        return str(value["$repeat"]) * int(value["times"])
+    return copy.deepcopy(value)
+
+
 def apply_mutation(base, mutation: dict):
     """Return a deep copy of base with the mutation applied: `remove` (list of paths) and `set` (path: value)."""
     value = copy.deepcopy(base)
@@ -240,7 +247,7 @@ def apply_mutation(base, mutation: dict):
         node = value
         for p in parents:
             node = node[p]
-        node[last] = copy.deepcopy(new)
+        node[last] = _expand(new)
     return value
 
 
