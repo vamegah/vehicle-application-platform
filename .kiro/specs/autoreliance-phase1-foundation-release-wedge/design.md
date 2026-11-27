@@ -358,7 +358,7 @@ The three risk topics and the five `legacy-integration` topics (`document.text.e
 
 ### API standards (`api-standards.md`)
 
-- **REST base path** `/api/v1/<context>/` with `<context>` one of `data-readiness`, `legacy-integration`, `integration-intelligence`, `configuration-assurance`, `release-assurance`, `audit` (Req 12.1). Exception: operator routes under `/admin/*` (see "Operator surface"), versioned as `/admin/v1/<resource>/{tenantId}`.
+- **REST base path** `/api/v1/<context>/` with `<context>` one of `data-readiness`, `legacy-integration`, `integration-intelligence`, `configuration-assurance`, `release-assurance`, `audit` (Req 12.1). Exception: operator routes under `/admin/*` (see "Operator surface"), versioned as `/admin/v1/<resource>/{tenantId}`. Internal health probes are not gateway-exposed: each context has `GET /api/v1/<context>/health` (`x-internal-only`), and the gateway's own probe is `GET /api/v1/api-gateway/health` in `contracts/openapi/api-gateway.yaml` (task 1.1); `api-gateway` is a valid `<context>` only for that probe.
 - **Success envelope** `{ "data": ..., "meta": { "traceId", "tenantId" } }`. The `tenantId` comes from the authenticated principal (Req 12.9). List responses add `meta.nextCursor` (assumption: `api-standards.md` fixes only `traceId` and `tenantId`, so the cursor extension is documented in the OpenAPI components).
 - **Errors** are RFC 9457 `application/problem+json` with `type`, `title`, `status`, `detail`, `instance`, and the extension members `correlationId` and `traceId`. A cross-tenant 404 uses the same body as a missing entity (Req 12.10, 15.4).
 - **Pagination** is cursor-only: `?cursor=<opaque>&limit=<int>`. Cursors are opaque, tenant-bound, and signed. Offset and page parameters are rejected with 400.

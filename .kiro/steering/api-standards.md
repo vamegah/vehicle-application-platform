@@ -2,6 +2,7 @@
 
 ## REST (gateway-exposed)
 - Base path: `/api/v1/<context>/`
+- Internal health probes: every context directory under `services/` has one `GET /api/v1/<context>/health` (`audit` for `audit-sink`, `api-gateway` for the gateway's own probe, `/api/v1/release-assurance/internal/sidecar-health` for the inference sidecar), marked `x-internal-only` and `x-health-check`, with no security and no gateway route. `api-gateway` is a valid `<context>` only for this internal probe; no gateway-exposed route uses it.
 - All responses: `{ "data": ..., "meta": { "traceId": "...", "tenantId": "..." } }`
 - Errors: RFC 9457 Problem Details (`application/problem+json`)
 - Pagination: cursor-based only (`?cursor=<opaque>&limit=<int>`)

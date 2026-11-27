@@ -12,8 +12,9 @@ info:
     Internal_Principal, and any tenant value in a body, path, or query of a tenant-facing route is ignored;
     504 as Problem Details with a correlation ID on a downstream timeout; 413 above the payload limit.
 
-    Standards (api-standards.md): base path /api/v1/audit/, envelope { data, meta }, Problem Details errors,
-    cursor-only pagination.
+    Standards (api-standards.md): base path /api/v1/audit/ for the audit query and /api/v1/api-gateway/ for
+    the gateway's own internal health probe, envelope { data, meta }, Problem Details errors, cursor-only
+    pagination.
   license:
     name: Proprietary
     identifier: LicenseRef-AutoReliance-Proprietary
@@ -23,9 +24,29 @@ servers:
 tags:
   - name: audit
     description: Audit record query
+  - name: operations
+    description: Internal health probe
 security:
   - tenantPrincipal: [auditor]
 paths:
+  /api/v1/api-gateway/health:
+    get:
+      operationId: apiGatewayHealth
+      summary: Liveness of the api-gateway (internal)
+      description: Internal liveness probe of the gateway itself. Not routed to external callers. Reports healthy with no other context running.
+      tags: [operations]
+      x-internal-only: true
+      x-health-check: true
+      security: []
+      responses:
+        '200':
+          description: The gateway is up.
+          content:
+            application/json:
+              schema:
+                $ref: './common/components.yaml#/components/schemas/Health'
+        '503':
+          $ref: './common/components.yaml#/components/responses/Problem503'
   /api/v1/audit/records:
     get:
       operationId: auditListRecords

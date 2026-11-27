@@ -39,18 +39,20 @@ TENANT_ROLES = frozenset({
 TENANT_PARAM_NAMES = re.compile(r"^(x-)?tenant([-_]?id)?$", re.I)
 TENANT_IN_PATH = re.compile(r"\{tenant", re.I)
 PAGING_PARAM_NAMES = re.compile(r"^(offset|page|pagenumber|page_number|pagesize|page_size|skip)$", re.I)
-# Context of each contract file: its routes live under /api/v1/<context>/.
+# Contexts of each contract file: its routes live under /api/v1/<context>/ for one of them.
+# api-gateway.yaml serves the audit query under /api/v1/audit/ and its own internal health probe under
+# /api/v1/api-gateway/ (task 1.1).
 FILE_CONTEXTS = {
-    "data-readiness.yaml": "data-readiness",
-    "legacy-integration.yaml": "legacy-integration",
-    "integration-intelligence.yaml": "integration-intelligence",
-    "configuration-assurance.yaml": "configuration-assurance",
-    "release-assurance.yaml": "release-assurance",
-    "release-assurance-sidecar.yaml": "release-assurance",
-    "api-gateway.yaml": "audit",
-    "audit-sink.yaml": "audit",
+    "data-readiness.yaml": ("data-readiness",),
+    "legacy-integration.yaml": ("legacy-integration",),
+    "integration-intelligence.yaml": ("integration-intelligence",),
+    "configuration-assurance.yaml": ("configuration-assurance",),
+    "release-assurance.yaml": ("release-assurance",),
+    "release-assurance-sidecar.yaml": ("release-assurance",),
+    "api-gateway.yaml": ("audit", "api-gateway"),
+    "audit-sink.yaml": ("audit",),
 }
-ALL_CONTEXTS = frozenset(FILE_CONTEXTS.values())
+ALL_CONTEXTS = frozenset(c for cs in FILE_CONTEXTS.values() for c in cs)
 
 
 class Resolver:
@@ -144,7 +146,7 @@ def lint_document(doc_file: Path, resolver: Resolver | None = None) -> list[str]
     doc_file = doc_file.resolve()
     doc = resolver.load(doc_file)
     problems: list[str] = []
-    context = FILE_CONTEXTS.get(doc_file.name)
+    contexts = FILE_CONTEXTS.get(doc_file.name) or ()
     if doc.get("openapi") != "3.1.0":
         problems.append(f"openapi-version: {doc_file.name}: openapi must be 3.1.0")
 
@@ -159,8 +161,9 @@ def lint_document(doc_file: Path, resolver: Resolver | None = None) -> list[str]
         elif doc_file.name == "gateway.yaml":
             if not any(path.startswith(f"/api/v1/{c}/") for c in ALL_CONTEXTS):
                 problems.append(f"base-path: {where}: must start with /api/v1/<context>/")
-        elif context is None or not path.startswith(f"/api/v1/{context}/"):
-            problems.append(f"base-path: {where}: must start with /api/v1/{context}/")
+        elif not any(path.startswith(f"/api/v1/{c}/") for c in contexts):
+            allowed = " or ".join(f"/api/v1/{c}/" for c in contexts) or "/api/v1/<context>/"
+            problems.append(f"base-path: {where}: must start with {allowed}")
 
     for path, method, owner, op, item_params in iter_operations(resolver, doc_file):
         where = f"{doc_file.name} {method.upper()} {path}"
