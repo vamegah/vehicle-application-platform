@@ -1,0 +1,248 @@
+# AutoReliance AI local development infrastructure (task 1.2). All data is fictional.
+#
+#   python platform/scripts/init-env.py     # once: generates the untracked platform/.env (all local secrets)
+#   cd platform && docker compose up -d     # starts the infrastructure, then the one-shot init jobs
+#
+# Every image is pinned by tag and digest and equals its row in DEPENDENCIES.lock.md (no `latest`). Do not change
+# the Garage image without a new dated decision (ADR-019). Host ports bind to 127.0.0.1 only.
+# The deployable container groups, the web app, and the per-deployable profiles are added by task 1.6.
+# Known dev-only limitation (ADR-020): Garage cannot scope keys by prefix, so it cannot deny a cross-tenant prefix
+# read inside the shared text bucket; see platform/README.md.
+
+name: autoreliance
+
+x-seed-tenants: &seed-tenants
+  # The two fictional seed tenants (key prefixes in the shared buckets, never buckets). Not secret.
+  SEED_TENANT_IDS: "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d 7f6e5d4c-3b2a-4190-8f7e-6d5c4b3a2910"
+
+services:
+  postgres:
+    image: pgvector/pgvector:0.8.7-pg16@sha256:484e838076e04939d27d3e176e91c86eea96236126023be8d3059761122e579f
+    environment:
+      POSTGRES_DB: autoreliance
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run python platform/scripts/init-env.py}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/initdb:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d autoreliance"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    mem_limit: 512m
+
+  kafka:
+    image: apache/kafka:3.9.2@sha256:05b4616e0702ef2729327705d54ad6b50ea70b271c4b730fabd2320789fb7b02
+    environment:
+      CLUSTER_ID: "QXV0b1JlbGlhbmNlRGV2MQ"  # base64 of a fixed 16-byte local id; not secret
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,HOST://:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,HOST://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,HOST:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_HEAP_OPTS: "-Xms256m -Xmx512m"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    ports:
+      - "127.0.0.1:9094:9094"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 18
+      start_period: 15s
+    mem_limit: 1g
+
+  neo4j:
+    image: neo4j:5.26.34-community@sha256:2c48628bc28c68d7e2787f76262dfc9d7c21a8f7f290e30da901c489aa7fe50d
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:?run python platform/scripts/init-env.py}
+      NEO4J_server_memory_heap_initial__size: 256m
+      NEO4J_server_memory_heap_max__size: 512m
+      NEO4J_server_memory_pagecache_size: 256m
+    volumes:
+      - neo4j-data:/data
+    ports:
+      - "127.0.0.1:7474:7474"
+      - "127.0.0.1:7687:7687"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    mem_limit: 1g
+
+  redis:
+    # One local Redis (ADR-002): noeviction, logical DB 0 for the Celery broker and DB 1 for the gateway cache.
+    image: redis:8.12.0@sha256:56a1737794e36c3ebe8a4544a8ab421af3ab1a6488fb2238aec228c404933fed
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?run python platform/scripts/init-env.py}
+    command: ["sh", "-c", "exec redis-server --maxmemory 256mb --maxmemory-policy noeviction --requirepass \"$$REDIS_PASSWORD\""]
+    volumes:
+      - redis-data:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD-SHELL", "REDISCLI_AUTH=\"$$REDIS_PASSWORD\" redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    mem_limit: 384m
+
+  garage:
+    # ADR-013, ADR-019: the digest equals the ledger row; change it only with a new dated decision.
+    image: dxflrs/garage:v2.6.0@sha256:4b5a318fc9fe2fbec5d3af590eeafe05d83492e6411266fa0b9e215c20264013
+    command: ["/garage", "server", "--single-node"]
+    environment:
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET:?run python platform/scripts/init-env.py}
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:?run python platform/scripts/init-env.py}
+    volumes:
+      - ./garage/garage.toml:/etc/garage.toml:ro
+      - garage-meta:/var/lib/garage/meta
+      - garage-data:/var/lib/garage/data
+    ports:
+      # S3 API only. RPC (3901) and the admin API (3903) stay on the compose network.
+      - "127.0.0.1:3900:3900"
+    healthcheck:
+      # The image has no shell or curl; `/garage status` connects over RPC and exits 0 when the node answers.
+      test: ["CMD", "/garage", "status"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+    mem_limit: 512m
+
+  vault:
+    # Dev server mode: in memory, unsealed, local development only. Re-seeded by vault-init on every start.
+    image: hashicorp/vault:2.2.2@sha256:dfa48c2fa2b0099ccb47681ec5c4804bf5aec9d6879ecfee07ad4b92a5427ad6
+    # Dev mode prints the root token and unseal key at startup; redact both lines so no secret reaches the logs.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        vault server -dev -dev-listen-address=0.0.0.0:8200 2>&1
+        | sed -e 's/^\(Root Token:\).*/\1 [redacted]/' -e 's/^\(Unseal Key:\).*/\1 [redacted]/'
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: ${VAULT_DEV_ROOT_TOKEN:?run python platform/scripts/init-env.py}
+      VAULT_ADDR: http://127.0.0.1:8200
+    cap_add:
+      - IPC_LOCK
+    ports:
+      - "127.0.0.1:8200:8200"
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    mem_limit: 256m
+
+  vault-init:
+    image: hashicorp/vault:2.2.2@sha256:dfa48c2fa2b0099ccb47681ec5c4804bf5aec9d6879ecfee07ad4b92a5427ad6
+    entrypoint: ["/bin/sh", "/scripts/init.sh"]
+    environment:
+      <<: *seed-tenants
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: ${VAULT_DEV_ROOT_TOKEN:?run python platform/scripts/init-env.py}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?run python platform/scripts/init-env.py}
+      LEGACY_INTEGRATION_ACCESS_KEY_ID: ${LEGACY_INTEGRATION_ACCESS_KEY_ID:?run python platform/scripts/init-env.py}
+      LEGACY_INTEGRATION_SECRET_ACCESS_KEY: ${LEGACY_INTEGRATION_SECRET_ACCESS_KEY:?run python platform/scripts/init-env.py}
+      DATA_READINESS_ACCESS_KEY_ID: ${DATA_READINESS_ACCESS_KEY_ID:?run python platform/scripts/init-env.py}
+      DATA_READINESS_SECRET_ACCESS_KEY: ${DATA_READINESS_SECRET_ACCESS_KEY:?run python platform/scripts/init-env.py}
+    volumes:
+      - ./vault/init.sh:/scripts/init.sh:ro
+    depends_on:
+      vault:
+        condition: service_healthy
+    restart: "no"
+    mem_limit: 128m
+
+  garage-bootstrap:
+    # Reuses the pinned Vault image (BusyBox sh and wget) to drive Garage's admin API: no extra image.
+    image: hashicorp/vault:2.2.2@sha256:dfa48c2fa2b0099ccb47681ec5c4804bf5aec9d6879ecfee07ad4b92a5427ad6
+    entrypoint: ["/bin/sh", "/scripts/bootstrap.sh"]
+    environment:
+      GARAGE_ADMIN_URL: http://garage:3903
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN:?run python platform/scripts/init-env.py}
+      LEGACY_INTEGRATION_ACCESS_KEY_ID: ${LEGACY_INTEGRATION_ACCESS_KEY_ID:?run python platform/scripts/init-env.py}
+      LEGACY_INTEGRATION_SECRET_ACCESS_KEY: ${LEGACY_INTEGRATION_SECRET_ACCESS_KEY:?run python platform/scripts/init-env.py}
+      DATA_READINESS_ACCESS_KEY_ID: ${DATA_READINESS_ACCESS_KEY_ID:?run python platform/scripts/init-env.py}
+      DATA_READINESS_SECRET_ACCESS_KEY: ${DATA_READINESS_SECRET_ACCESS_KEY:?run python platform/scripts/init-env.py}
+    volumes:
+      - ./garage/bootstrap.sh:/scripts/bootstrap.sh:ro
+    depends_on:
+      garage:
+        condition: service_healthy
+      vault-init:
+        condition: service_completed_successfully
+    restart: "no"
+    mem_limit: 128m
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.166.0@sha256:3e18fe04181de50bdd72e23ad4a4d6214b54351e63d496f1c58127cc4541ad7f
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel/collector.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+      # health_check extension; the image has no shell, so the smoke test probes it from the host.
+      - "127.0.0.1:13133:13133"
+    mem_limit: 256m
+
+  prometheus:
+    image: prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:9090/-/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    depends_on:
+      - otel-collector
+    mem_limit: 512m
+
+  grafana:
+    image: grafana/grafana:13.3.2@sha256:81556409ba48b2b922e0adb69a2511337d8ba7578f11962eefa6149a2d815101
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?run python platform/scripts/init-env.py}
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:3000/api/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    mem_limit: 512m
+
+volumes:
+  postgres-data:
+  kafka-data:
+  neo4j-data:
+  redis-data:
+  garage-meta:
+  garage-data:
+  prometheus-data:
+  grafana-data:

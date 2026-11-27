@@ -1,0 +1,8 @@
+# Grafana datasource for local development (task 1.2). Dashboards come with task 16.1.
+apiVersion: 1
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
