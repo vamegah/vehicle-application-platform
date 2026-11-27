@@ -1,0 +1,32 @@
+# release-assurance inference sidecar (task 1.1 skeleton), co-deployed with the release-assurance context. Python 3.12, FastAPI.
+# Every version is an exact pin with a row in DEPENDENCIES.lock.md.
+# Contract: contracts/openapi/release-assurance-sidecar.yaml (health route GET /api/v1/release-assurance/internal/sidecar-health).
+
+[build-system]
+requires = ["setuptools==84.2.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "autoreliance-release-assurance-inference-sidecar"
+version = "0.1.0"
+description = "AutoReliance AI release-assurance inference sidecar"
+requires-python = "==3.12.*"
+dependencies = [
+    "fastapi==0.165.0",
+    "pydantic==2.14.4",
+    "uvicorn==0.54.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "httpx==0.29.0",
+    "pytest==9.2.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-p no:cacheprovider"

@@ -184,6 +184,15 @@ class LedgerCoverage(Case):
         self.edit(LEDGER, "| next | 16.4.6 | |", "| next | 16.4.6 | |\n| later-lib | 1.0.0 | Planned (task 5.1) |")
         self.assertEqual(self.rules(), set())
 
+    def test_boot_managed_row_is_exempt_when_boot_is_used(self):
+        self.edit(LEDGER, "| next | 16.4.6 | |", "| next | 16.4.6 | |\n| org.example:boot-lib | 1.0.0 | Boot-managed (`x.version`). |")
+        self.assertEqual(self.rules(), set())
+
+    def test_row_that_only_mentions_boot_managed_in_prose_is_not_exempt(self):
+        # Task 1.1: jqwik and Pact JVM rows say they run "on the Boot-managed platform"; that is not Boot management.
+        self.edit(LEDGER, "| next | 16.4.6 | |", "| next | 16.4.6 | |\n| net.example:jqwik-like | 1.0.0 | Latest on Central. Runs on the Boot-managed platform 6.0.3. |")
+        self.assertFails("ledger-unused", "jqwik-like")
+
 
 class ForbiddenLibraries(Case):
     def test_langgraph_in_python_manifest(self):
