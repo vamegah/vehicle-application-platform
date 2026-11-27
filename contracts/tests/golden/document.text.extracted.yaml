@@ -1,0 +1,147 @@
+# Golden examples for document.text.extracted (contracts/asyncapi/document.text.extracted.yaml, task 2.8).
+# All values are fictional. Identifiers and hashes are consistent: eventId and canonicalDocumentId follow the
+# x-event-id and x-canonical-document-id rules of the contract, and inline textSha256 and textSizeBytes match
+# the text (checked by test_asyncapi_document_topic.py with document_rules.py). Cross-field mismatches, such
+# as a contentHash that differs from contentSha256, are schema-valid and are tested there, not here.
+doc: document.text.extracted.yaml
+message: DocumentTextExtracted
+valid:
+  inlineShared:
+    eventId: 8ef910c1-eee1-5984-a121-593a231b73db
+    eventType: document.text.extracted
+    version: 1
+    tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    occurredAt: '2026-11-26T11:00:01Z'
+    sourceSystem: FIC-DMS
+    naturalKey: FIC-DMS|specs/FIC-BRAKE-ECU-spec-v4.pdf
+    contentHash: efa06ec78455c1c966fd055aa5bdc448e87da81cbe55c980e2e51a7c1edade81
+    extractedAt: '2026-11-26T11:00:00Z'
+    payload:
+      canonicalDocumentId: 607cdc4a-fadb-5321-8722-39301687815b
+      objectStoreUri: s3://autoreliance-raw-dev/0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d/raw/documents/607cdc4a-fadb-5321-8722-39301687815b/efa06ec78455c1c966fd055aa5bdc448e87da81cbe55c980e2e51a7c1edade81.pdf
+      contentSha256: efa06ec78455c1c966fd055aa5bdc448e87da81cbe55c980e2e51a7c1edade81
+      mediaType: application/pdf
+      sizeBytes: 48211
+      pageCount: 3
+      extractedText: FICTIONAL brake ECU specification. FIC-ECU-BRAKE firmware 4.3.0 requires calibration FIC-CAL-0099.
+      textSha256: f276f084576d31f2abdbb54bc9c67f75f763ca5f8383a6a5ac3df05c7a9b99e8
+      textSizeBytes: 98
+      extractorVersion: pdfbox-3.0.8
+  textUriShared:
+    eventId: 8ef910c1-eee1-5984-a121-593a231b73db
+    eventType: document.text.extracted
+    version: 1
+    tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    occurredAt: '2026-11-26T11:00:01Z'
+    sourceSystem: FIC-DMS
+    naturalKey: FIC-DMS|specs/FIC-BRAKE-ECU-spec-v4.pdf
+    contentHash: efa06ec78455c1c966fd055aa5bdc448e87da81cbe55c980e2e51a7c1edade81
+    extractedAt: '2026-11-26T11:00:00Z'
+    payload:
+      canonicalDocumentId: 607cdc4a-fadb-5321-8722-39301687815b
+      objectStoreUri: s3://autoreliance-raw-dev/0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d/raw/documents/607cdc4a-fadb-5321-8722-39301687815b/efa06ec78455c1c966fd055aa5bdc448e87da81cbe55c980e2e51a7c1edade81.pdf
+      contentSha256: efa06ec78455c1c966fd055aa5bdc448e87da81cbe55c980e2e51a7c1edade81
+      mediaType: application/pdf
+      sizeBytes: 9182211
+      pageCount: 412
+      textUri: s3://autoreliance-text-dev/0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d/text/documents/607cdc4a-fadb-5321-8722-39301687815b/03c1adf50b5a5bdbf49bdf27b78c912966ef5da586984d2b096553a6543cdc49.txt
+      textSha256: 03c1adf50b5a5bdbf49bdf27b78c912966ef5da586984d2b096553a6543cdc49
+      textSizeBytes: 1048576
+      extractorVersion: pdfbox-3.0.8
+  textUriDedicated:
+    eventId: 8ef910c1-eee1-5984-a121-593a231b73db
+    eventType: document.text.extracted
+    version: 1
+    tenantId: 0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d
+    occurredAt: '2026-11-26T11:00:01Z'
+    sourceSystem: FIC-DMS
+    naturalKey: FIC-DMS|specs/FIC-BRAKE-ECU-spec-v4.pdf
+    contentHash: efa06ec78455c1c966fd055aa5bdc448e87da81cbe55c980e2e51a7c1edade81
+    extractedAt: '2026-11-26T11:00:00Z'
+    payload:
+      canonicalDocumentId: 607cdc4a-fadb-5321-8722-39301687815b
+      objectStoreUri: s3://autoreliance-raw-dev-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d/0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d/raw/documents/607cdc4a-fadb-5321-8722-39301687815b/efa06ec78455c1c966fd055aa5bdc448e87da81cbe55c980e2e51a7c1edade81.pdf
+      contentSha256: efa06ec78455c1c966fd055aa5bdc448e87da81cbe55c980e2e51a7c1edade81
+      mediaType: application/pdf
+      sizeBytes: 9182211
+      pageCount: 412
+      textUri: s3://autoreliance-text-dev-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d/0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d/text/documents/607cdc4a-fadb-5321-8722-39301687815b/03c1adf50b5a5bdbf49bdf27b78c912966ef5da586984d2b096553a6543cdc49.txt
+      textSha256: 03c1adf50b5a5bdbf49bdf27b78c912966ef5da586984d2b096553a6543cdc49
+      textSizeBytes: 1048576
+      extractorVersion: pdfbox-3.0.8
+invalid:
+  - name: neither extractedText nor textUri
+    base: inlineShared
+    remove: [payload.extractedText]
+  - name: both extractedText and textUri
+    base: textUriShared
+    set: { payload.extractedText: fictional }
+  - name: inline text over 65536 characters
+    base: inlineShared
+    set: { payload.extractedText: { $repeat: a, times: 65537 } }
+  - name: inline text with textSizeBytes over 65536
+    base: inlineShared
+    set: { payload.textSizeBytes: 65537 }
+  - name: malformed contentSha256
+    base: inlineShared
+    set: { payload.contentSha256: NOT-A-HASH }
+  - name: pg URI
+    base: inlineShared
+    set: { payload.objectStoreUri: 'pg://legacy_integration/documents/607cdc4a-fadb-5321-8722-39301687815b' }
+  - name: file URI
+    base: inlineShared
+    set: { payload.objectStoreUri: 'file:///var/lib/autoreliance/documents/607cdc4a-fadb-5321-8722-39301687815b.pdf' }
+  - name: objectStoreUri in a text bucket
+    base: inlineShared
+    set: { payload.objectStoreUri: s3://autoreliance-text-dev/0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d/raw/documents/607cdc4a-fadb-5321-8722-39301687815b/efa06ec78455c1c966fd055aa5bdc448e87da81cbe55c980e2e51a7c1edade81.pdf }
+  - name: objectStoreUri with a text/ key
+    base: inlineShared
+    set: { payload.objectStoreUri: s3://autoreliance-raw-dev/0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d/text/documents/607cdc4a-fadb-5321-8722-39301687815b/efa06ec78455c1c966fd055aa5bdc448e87da81cbe55c980e2e51a7c1edade81.pdf }
+  - name: objectStoreUri without the tenant key layout
+    base: inlineShared
+    set: { payload.objectStoreUri: s3://autoreliance-raw-dev/raw/documents/607cdc4a-fadb-5321-8722-39301687815b/efa06ec78455c1c966fd055aa5bdc448e87da81cbe55c980e2e51a7c1edade81.pdf }
+  - name: objectStoreUri in the retired per-tenant bucket form
+    base: inlineShared
+    set: { payload.objectStoreUri: s3://ar-dev-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d-raw/raw/documents/607cdc4a-fadb-5321-8722-39301687815b/efa06ec78455c1c966fd055aa5bdc448e87da81cbe55c980e2e51a7c1edade81.pdf }
+  - name: textUri in a raw bucket
+    base: textUriShared
+    set: { payload.textUri: s3://autoreliance-raw-dev/0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d/text/documents/607cdc4a-fadb-5321-8722-39301687815b/03c1adf50b5a5bdbf49bdf27b78c912966ef5da586984d2b096553a6543cdc49.txt }
+  - name: textUri with a raw/ key
+    base: textUriShared
+    set: { payload.textUri: s3://autoreliance-text-dev/0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d/raw/documents/607cdc4a-fadb-5321-8722-39301687815b/03c1adf50b5a5bdbf49bdf27b78c912966ef5da586984d2b096553a6543cdc49.txt }
+  - name: textUri without the tenant prefix
+    base: textUriShared
+    set: { payload.textUri: s3://autoreliance-text-dev/text/documents/607cdc4a-fadb-5321-8722-39301687815b/03c1adf50b5a5bdbf49bdf27b78c912966ef5da586984d2b096553a6543cdc49.txt }
+  - name: textUri in the retired per-tenant bucket form
+    base: textUriShared
+    set: { payload.textUri: s3://ar-dev-0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d-text/text/documents/607cdc4a-fadb-5321-8722-39301687815b/03c1adf50b5a5bdbf49bdf27b78c912966ef5da586984d2b096553a6543cdc49.txt }
+  - name: missing textSha256
+    base: inlineShared
+    remove: [payload.textSha256]
+  - name: media type other than application/pdf
+    base: inlineShared
+    set: { payload.mediaType: application/msword }
+  - name: missing canonicalDocumentId
+    base: inlineShared
+    remove: [payload.canonicalDocumentId]
+  - name: missing sourceSystem
+    base: inlineShared
+    remove: [sourceSystem]
+  - name: missing naturalKey
+    base: inlineShared
+    remove: [naturalKey]
+  - name: missing contentHash
+    base: inlineShared
+    remove: [contentHash]
+  - name: missing extractedAt
+    base: inlineShared
+    remove: [extractedAt]
+  - name: sourceRecordVersion is not used on this topic
+    base: inlineShared
+    set: { sourceRecordVersion: 1 }
+  - name: version 2
+    base: inlineShared
+    set: { version: 2 }
+  - name: naturalKey with three segments
+    base: inlineShared
+    set: { naturalKey: FIC-DMS|specs|FIC-BRAKE-ECU-spec-v4.pdf }
