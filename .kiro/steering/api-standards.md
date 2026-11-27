@@ -21,6 +21,7 @@
 - Package: `autoreliance.<context>.v1`
 - Every request includes `tenant_id` field
 - Breaking changes require a new package version (`v2`), never mutation of `v1`
+- Layout: a `v1` package lives in `contracts/proto/<context>/`; a `v<N>` package (N >= 2) lives in `contracts/proto/<context>/v<N>/`, because buf forbids two packages in one directory. CI runs `buf lint` and `buf breaking --against .git#branch=main` on every `contracts/proto/` change
 
 ## Kafka events
 - Topic naming: `<domain>.<entity>.<action>` (past tense, e.g. `firmware.change.committed`)
