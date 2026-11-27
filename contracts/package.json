@@ -9,6 +9,7 @@
     "test": "cd .. && python -m unittest discover -s contracts/tests -v"
   },
   "devDependencies": {
-    "@asyncapi/cli": "6.3.1"
+    "@asyncapi/cli": "6.3.1",
+    "@redocly/cli": "2.84.0"
   }
 }

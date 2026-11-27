@@ -1,0 +1,167 @@
+openapi: 3.1.0
+info:
+  title: AutoReliance AI release-assurance inference sidecar API (internal)
+  version: 1.0.0
+  description: |
+    Internal contract between release-assurance and its co-deployed Python inference sidecar (ADR-004). The
+    sidecar is part of the release-assurance bounded context, so this call stays inside one context. Every
+    operation is internal only: it is served on the pod's loopback interface, never routed by the gateway,
+    and excluded from the gateway aggregate. All values in examples are fictional.
+
+    Only the Test_Selector calls the sidecar. Its output ranks recommended tests and never feeds the
+    evidence-sufficiency score, gap detection, the release verdict, or the release risk score (Req 10.9).
+    release-assurance computes scores, gaps, and verdicts while the sidecar is stopped (Req 10.7) and falls
+    back to a rule-based ranking when the sidecar times out or fails (Req 10.4). Results are deterministic for
+    the same inputs because all randomness is seeded (Req 10.5).
+
+    The caller forwards the user's signed Internal_Principal; the sidecar checks that the request tenant equals
+    the principal's tenant. The tenant is taken from the principal, never from the request body.
+  license:
+    name: Proprietary
+    identifier: LicenseRef-AutoReliance-Proprietary
+servers:
+  - url: http://127.0.0.1:8090
+    description: Loopback listener inside the release-assurance pod
+tags:
+  - name: test-ranking
+    description: Model-based ranking of candidate tests
+  - name: operations
+    description: Internal health
+security:
+  - tenantPrincipal: [release-manager, firmware-engineer]
+paths:
+  /api/v1/release-assurance/internal/test-rankings:
+    post:
+      operationId: sidecarRankTests
+      summary: Rank catalog tests for open gaps (internal)
+      tags: [test-ranking]
+      x-internal-only: true
+      security:
+        - tenantPrincipal: [release-manager, firmware-engineer]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RankingRequest'
+      responses:
+        '200':
+          description: Ranked candidates. Each entry cites the gap it addresses and its supporting evidence.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RankingEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '413':
+          $ref: './common/components.yaml#/components/responses/Problem413'
+        '503':
+          $ref: './common/components.yaml#/components/responses/Problem503'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/release-assurance/internal/sidecar-health:
+    get:
+      operationId: sidecarHealth
+      summary: Liveness of the inference sidecar (internal)
+      tags: [operations]
+      x-internal-only: true
+      x-health-check: true
+      security: []
+      responses:
+        '200':
+          description: The sidecar is up and its models are loaded.
+          content:
+            application/json:
+              schema:
+                $ref: './common/components.yaml#/components/schemas/Health'
+        '503':
+          $ref: './common/components.yaml#/components/responses/Problem503'
+components:
+  securitySchemes:
+    tenantPrincipal:
+      $ref: './common/components.yaml#/components/securitySchemes/tenantPrincipal'
+  schemas:
+    RankingRequest:
+      type: object
+      additionalProperties: false
+      required: [releaseCandidateId, gaps, catalogTestIds, impact]
+      properties:
+        releaseCandidateId:
+          $ref: './common/components.yaml#/components/schemas/CanonicalId'
+        gaps:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [gapId, affectedEntityCanonicalId, missingCategory]
+            properties:
+              gapId:
+                $ref: './common/components.yaml#/components/schemas/CanonicalId'
+              affectedEntityCanonicalId:
+                $ref: './common/components.yaml#/components/schemas/CanonicalId'
+              missingCategory:
+                type: string
+                enum: [test-coverage, configuration-validation, evidence-recency]
+        catalogTestIds:
+          type: array
+          minItems: 1
+          description: The tenant's registered test catalog. The sidecar never returns a test outside it (Req 10.6).
+          items:
+            type: string
+        impact:
+          type: object
+          additionalProperties: false
+          required: [impactResultId, affectedEntityCanonicalIds]
+          properties:
+            impactResultId:
+              $ref: './common/components.yaml#/components/schemas/CanonicalId'
+            affectedEntityCanonicalIds:
+              type: array
+              items:
+                $ref: './common/components.yaml#/components/schemas/CanonicalId'
+    RankedTest:
+      allOf:
+        - $ref: './common/components.yaml#/components/schemas/AiOutputLabels'
+        - type: object
+          required: [rank, testId, gapId, failureLikelihood, modelVersion]
+          properties:
+            rank:
+              type: integer
+              minimum: 1
+            testId:
+              type: string
+            gapId:
+              $ref: './common/components.yaml#/components/schemas/CanonicalId'
+            failureLikelihood:
+              type: number
+              minimum: 0
+              maximum: 1
+              description: xgboost failure-likelihood estimate used for ranking only.
+            modelVersion:
+              type: string
+    RankingEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: object
+          additionalProperties: false
+          description: >-
+            The complete ranking for one request. Not a paginated list: release-assurance pages the stored
+            recommendations it derives from this result.
+          required: [releaseCandidateId, rankings]
+          properties:
+            releaseCandidateId:
+              $ref: './common/components.yaml#/components/schemas/CanonicalId'
+            rankings:
+              type: array
+              items:
+                $ref: '#/components/schemas/RankedTest'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/Meta'

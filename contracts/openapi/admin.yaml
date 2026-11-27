@@ -22,6 +22,9 @@ info:
     Data paths are Kafka-only. Admin paths under /admin/* are the sole exception that may use synchronous
     HTTP between services, for read-only diagnostics only. Any admin-path HTTP failure returns 503 to the
     caller, with no fallback and no cached value.
+  license:
+    name: Proprietary
+    identifier: LicenseRef-AutoReliance-Proprietary
 servers:
   - url: https://gateway.autoreliance.example
     description: API gateway (external, operator principals only)
@@ -83,17 +86,17 @@ paths:
                       tenantId: null
                       targetTenantId: 3f2b8c1e-5a47-4d0e-9c6b-0a1d2e3f4a5b
         '400':
-          $ref: '#/components/responses/Problem400'
+          $ref: '#/components/responses/AdminProblem400'
         '401':
-          $ref: '#/components/responses/Problem401'
+          $ref: '#/components/responses/AdminProblem401'
         '403':
-          $ref: '#/components/responses/Problem403'
+          $ref: '#/components/responses/AdminProblem403'
         '404':
-          $ref: '#/components/responses/Problem404'
+          $ref: '#/components/responses/AdminProblem404'
         '503':
-          $ref: '#/components/responses/Problem503'
+          $ref: '#/components/responses/AdminProblem503'
         '504':
-          $ref: '#/components/responses/Problem504'
+          $ref: '#/components/responses/AdminProblem504'
   /admin/v1/layout-cache/{tenantId}:
     get:
       operationId: getLayoutCache
@@ -128,15 +131,15 @@ paths:
               schema:
                 $ref: '#/components/schemas/LayoutCacheEnvelope'
         '400':
-          $ref: '#/components/responses/Problem400'
+          $ref: '#/components/responses/AdminProblem400'
         '401':
-          $ref: '#/components/responses/Problem401'
+          $ref: '#/components/responses/AdminProblem401'
         '403':
-          $ref: '#/components/responses/Problem403'
+          $ref: '#/components/responses/AdminProblem403'
         '404':
-          $ref: '#/components/responses/Problem404'
+          $ref: '#/components/responses/AdminProblem404'
         '503':
-          $ref: '#/components/responses/Problem503'
+          $ref: '#/components/responses/AdminProblem503'
 components:
   securitySchemes:
     platformOperator:
@@ -251,63 +254,54 @@ components:
           $ref: '#/components/schemas/CacheEntry'
         meta:
           $ref: '#/components/schemas/AdminMeta'
-    Problem:
-      type: object
-      required: [type, title, status, detail, instance, correlationId, traceId]
-      properties:
-        type:
-          type: string
-        title:
-          type: string
-        status:
-          type: integer
-        detail:
-          type: string
-        instance:
-          type: string
-        correlationId:
-          type: string
-        traceId:
-          type: string
-        unreachableProcesses:
-          type: array
-          description: Present on 503. Processes (or vault) that could not be read.
-          items:
-            type: string
+    AdminProblem:
+      description: >-
+        The shared RFC 9457 Problem Details (common/components.yaml), with detail, instance, and traceId
+        required on admin routes and the unreachableProcesses member on 503.
+      allOf:
+        - $ref: './common/components.yaml#/components/schemas/Problem'
+        - type: object
+          required: [detail, instance, traceId]
+          properties:
+            unreachableProcesses:
+              type: array
+              description: Present on 503. Processes (or vault) that could not be read.
+              items:
+                type: string
   responses:
-    Problem400:
+    AdminProblem400:
       description: Malformed target tenant ID.
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/Problem'
-    Problem401:
+            $ref: '#/components/schemas/AdminProblem'
+    AdminProblem401:
       description: Missing or invalid token.
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/Problem'
-    Problem403:
+            $ref: '#/components/schemas/AdminProblem'
+    AdminProblem403:
       description: Principal lacks the platform-operator role, or is tenant-scoped. An audit event is recorded.
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/Problem'
-    Problem404:
+            $ref: '#/components/schemas/AdminProblem'
+    AdminProblem404:
       description: Unknown tenant. Identical body to a missing entity.
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/Problem'
-    Problem503:
+            $ref: '#/components/schemas/AdminProblem'
+    AdminProblem503:
       description: Any admin-path HTTP failure, including a registered cache endpoint or Vault that is unreachable, times out (2 s), or returns an error or malformed body. The detail names the process. No fallback and no cached value.
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/Problem'
-    Problem504:
+            $ref: '#/components/schemas/AdminProblem'
+    AdminProblem504:
       description: Downstream timeout at the gateway.
       content:
         application/problem+json:
           schema:
-            $ref: '#/components/schemas/Problem'
+            $ref: '#/components/schemas/AdminProblem'

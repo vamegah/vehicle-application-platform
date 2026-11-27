@@ -1,0 +1,401 @@
+openapi: 3.1.0
+info:
+  title: AutoReliance AI configuration-assurance API
+  version: 1.0.0
+  description: |
+    REST contract of the configuration-assurance bounded context (Java/Spring Boot, integration-config
+    deployable): configuration validation of a Canonical_Configuration_Snapshot, its per-rule results, the
+    configuration risk score, and the versioned rule sets (Req 7). All values in examples are fictional.
+
+    Latency-sensitive callers use the gRPC ConfigValidationService (contracts/proto/configuration-assurance);
+    it returns the same content as POST /validations.
+
+    Standards (api-standards.md): base path /api/v1/configuration-assurance/, envelope { data, meta },
+    Problem Details errors, cursor-only pagination. The tenant comes from the authenticated principal.
+  license:
+    name: Proprietary
+    identifier: LicenseRef-AutoReliance-Proprietary
+servers:
+  - url: https://gateway.autoreliance.example
+    description: API gateway
+tags:
+  - name: validations
+    description: Configuration validation results and their risk scores
+  - name: rule-sets
+    description: Versioned rule sets
+  - name: operations
+    description: Internal health
+security:
+  - tenantPrincipal: [configuration-engineer]
+paths:
+  /api/v1/configuration-assurance/validations:
+    post:
+      operationId: configurationValidateSnapshot
+      summary: Validate a configuration snapshot
+      description: |
+        Evaluates the snapshot against the tenant's enabled rules and stores the result (Req 7.1, 7.3). The
+        same snapshot and rule-set version always give the same result (Req 7.7). A rule with missing data is
+        not-evaluable, never pass (Req 7.5). Publishes config.validation.completed.
+      tags: [validations]
+      security:
+        - tenantPrincipal: [configuration-engineer, release-manager]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ValidationRequest'
+      responses:
+        '201':
+          description: The stored validation result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationResultEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '404':
+          $ref: './common/components.yaml#/components/responses/Problem404'
+        '413':
+          $ref: './common/components.yaml#/components/responses/Problem413'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+    get:
+      operationId: configurationListValidations
+      summary: Validation results, newest first
+      tags: [validations]
+      security:
+        - tenantPrincipal: [configuration-engineer, release-manager, firmware-engineer, auditor]
+      parameters:
+        - $ref: './common/components.yaml#/components/parameters/Cursor'
+        - $ref: './common/components.yaml#/components/parameters/Limit'
+        - name: snapshotCanonicalId
+          in: query
+          required: false
+          schema:
+            $ref: './common/components.yaml#/components/schemas/CanonicalId'
+      responses:
+        '200':
+          description: One page of validation results.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationResultListEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/configuration-assurance/validations/{validationResultId}:
+    get:
+      operationId: configurationGetValidation
+      summary: One validation result with its rule results
+      tags: [validations]
+      security:
+        - tenantPrincipal: [configuration-engineer, release-manager, firmware-engineer, auditor]
+      parameters:
+        - $ref: '#/components/parameters/ValidationResultId'
+      responses:
+        '200':
+          description: The validation result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationResultEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '404':
+          $ref: './common/components.yaml#/components/responses/Problem404'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/configuration-assurance/validations/{validationResultId}/risk-score:
+    get:
+      operationId: configurationGetRiskScore
+      summary: Configuration risk score of a validation result
+      description: |
+        A model-generated estimate that requires human review, derived from the per-rule results and citing
+        the rule results that produced it (Req 7.10).
+      tags: [validations]
+      security:
+        - tenantPrincipal: [configuration-engineer, release-manager, auditor]
+      parameters:
+        - $ref: '#/components/parameters/ValidationResultId'
+      responses:
+        '200':
+          description: The configuration risk score.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConfigurationRiskScoreEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '404':
+          $ref: './common/components.yaml#/components/responses/Problem404'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/configuration-assurance/rule-sets:
+    get:
+      operationId: configurationListRuleSets
+      summary: Rule-set versions, newest first
+      tags: [rule-sets]
+      security:
+        - tenantPrincipal: [configuration-engineer, auditor]
+      parameters:
+        - $ref: './common/components.yaml#/components/parameters/Cursor'
+        - $ref: './common/components.yaml#/components/parameters/Limit'
+      responses:
+        '200':
+          description: One page of rule sets.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleSetListEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/configuration-assurance/rule-sets/{ruleSetVersion}:
+    get:
+      operationId: configurationGetRuleSet
+      summary: One rule-set version
+      tags: [rule-sets]
+      security:
+        - tenantPrincipal: [configuration-engineer, auditor]
+      parameters:
+        - name: ruleSetVersion
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/RuleSetVersion'
+      responses:
+        '200':
+          description: The rule set.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleSetEnvelope'
+        '400':
+          $ref: './common/components.yaml#/components/responses/Problem400'
+        '401':
+          $ref: './common/components.yaml#/components/responses/Problem401'
+        '403':
+          $ref: './common/components.yaml#/components/responses/Problem403'
+        '404':
+          $ref: './common/components.yaml#/components/responses/Problem404'
+        '504':
+          $ref: './common/components.yaml#/components/responses/Problem504'
+  /api/v1/configuration-assurance/health:
+    get:
+      operationId: configurationAssuranceHealth
+      summary: Liveness of the configuration-assurance context (internal)
+      description: Internal liveness probe. Not routed by the gateway.
+      tags: [operations]
+      x-internal-only: true
+      x-health-check: true
+      security: []
+      responses:
+        '200':
+          description: The context is up.
+          content:
+            application/json:
+              schema:
+                $ref: './common/components.yaml#/components/schemas/Health'
+        '503':
+          $ref: './common/components.yaml#/components/responses/Problem503'
+components:
+  securitySchemes:
+    tenantPrincipal:
+      $ref: './common/components.yaml#/components/securitySchemes/tenantPrincipal'
+  parameters:
+    ValidationResultId:
+      name: validationResultId
+      in: path
+      required: true
+      schema:
+        $ref: './common/components.yaml#/components/schemas/CanonicalId'
+  schemas:
+    RuleSetVersion:
+      type: string
+      pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$'
+    ValidationStatus:
+      type: string
+      enum: [pass, fail, not-evaluable]
+    RuleCategory:
+      type: string
+      enum: [hardware-revision-compatibility, firmware-dependency, communication-protocol, regional-configuration, calibration-presence, programming-readiness]
+    ValidationRequest:
+      type: object
+      additionalProperties: false
+      required: [snapshotCanonicalId]
+      properties:
+        snapshotCanonicalId:
+          $ref: './common/components.yaml#/components/schemas/CanonicalId'
+        ruleSetVersion:
+          $ref: '#/components/schemas/RuleSetVersion'
+    RuleResult:
+      type: object
+      additionalProperties: false
+      required: [ruleResultId, ruleId, ruleCategory, status, offendingEntityCanonicalIds, missingData]
+      properties:
+        ruleResultId:
+          $ref: './common/components.yaml#/components/schemas/CanonicalId'
+        ruleId:
+          type: string
+        ruleCategory:
+          $ref: '#/components/schemas/RuleCategory'
+        status:
+          $ref: '#/components/schemas/ValidationStatus'
+        offendingEntityCanonicalIds:
+          type: array
+          items:
+            $ref: './common/components.yaml#/components/schemas/CanonicalId'
+        missingData:
+          type: array
+          items:
+            type: string
+    ValidationResult:
+      type: object
+      additionalProperties: false
+      required: [validationResultId, snapshotCanonicalId, ruleSetVersion, overallStatus, failedRuleIds, ruleResults, evaluatedAt]
+      properties:
+        validationResultId:
+          $ref: './common/components.yaml#/components/schemas/CanonicalId'
+        snapshotCanonicalId:
+          $ref: './common/components.yaml#/components/schemas/CanonicalId'
+        ruleSetVersion:
+          $ref: '#/components/schemas/RuleSetVersion'
+        overallStatus:
+          $ref: '#/components/schemas/ValidationStatus'
+        failedRuleIds:
+          type: array
+          items:
+            type: string
+        ruleResults:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/RuleResult'
+        evaluatedAt:
+          type: string
+          format: date-time
+    ConfigurationRiskScore:
+      allOf:
+        - $ref: './common/components.yaml#/components/schemas/AiOutputLabels'
+        - type: object
+          required: [validationResultId, snapshotCanonicalId, score, confidence, estimate, ruleSetVersion, modelVersion, computedAt]
+          properties:
+            validationResultId:
+              $ref: './common/components.yaml#/components/schemas/CanonicalId'
+            snapshotCanonicalId:
+              $ref: './common/components.yaml#/components/schemas/CanonicalId'
+            score:
+              type: number
+              minimum: 0
+              maximum: 100
+            confidence:
+              type: number
+              minimum: 0
+              maximum: 1
+              description: Lowered for each not-evaluable rule (Req 7.10).
+            ruleSetVersion:
+              $ref: '#/components/schemas/RuleSetVersion'
+            modelVersion:
+              type: string
+            computedAt:
+              type: string
+              format: date-time
+    RuleSet:
+      type: object
+      additionalProperties: false
+      required: [ruleSetVersion, activatedAt, active, rules]
+      properties:
+        ruleSetVersion:
+          $ref: '#/components/schemas/RuleSetVersion'
+        activatedAt:
+          type: string
+          format: date-time
+        active:
+          type: boolean
+        rules:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [ruleId, ruleCategory, enabled, description]
+            properties:
+              ruleId:
+                type: string
+              ruleCategory:
+                $ref: '#/components/schemas/RuleCategory'
+              enabled:
+                type: boolean
+              description:
+                type: string
+    ValidationResultEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/ValidationResult'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/Meta'
+    ValidationResultListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationResult'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/ListMeta'
+    ConfigurationRiskScoreEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/ConfigurationRiskScore'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/Meta'
+    RuleSetEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/RuleSet'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/Meta'
+    RuleSetListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuleSet'
+        meta:
+          $ref: './common/components.yaml#/components/schemas/ListMeta'
