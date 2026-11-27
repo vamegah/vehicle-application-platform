@@ -116,7 +116,7 @@ class Services(unittest.TestCase):
                 key, value = m.group(1), m.group(2).strip()
                 if SECRET_NAMES.search(key) and key not in {"GF_SECURITY_ADMIN_USER"}:
                     with self.subTest(service=name, variable=key):
-                        self.assertRegex(value, r"^\$\{[A-Z0-9_]+:\?[^}]+\}$|^neo4j/\$\{[A-Z0-9_]+:\?[^}]+\}$")
+                        self.assertRegex(value, r"^\$\{[A-Z0-9_]+:\?\}$|^neo4j/\$\{[A-Z0-9_]+:\?\}$")
 
     def test_one_shot_jobs_run_after_their_dependencies_and_do_not_restart(self):
         for name in ONE_SHOT:
