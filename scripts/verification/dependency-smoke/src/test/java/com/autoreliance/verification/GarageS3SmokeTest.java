@@ -59,10 +59,7 @@ class GarageS3SmokeTest {
                 .waitingFor(Wait.forListeningPort());
         garage.start();
 
-        String status = exec("/garage", "status").getStdout();
-        Matcher node = Pattern.compile("([0-9a-f]{16})\\s").matcher(status);
-        assertThat(node.find()).as("node id in: %s", status).isTrue();
-        exec("/garage", "layout", "assign", "-z", "dc1", "-c", "1G", node.group(1));
+        exec("/garage", "layout", "assign", "-z", "dc1", "-c", "1G", awaitNodeId());
         exec("/garage", "layout", "apply", "--version", "1");
         exec("/garage", "bucket", "create", BUCKET);
         String key = exec("/garage", "key", "create", "smoke").getStdout();
@@ -78,6 +75,28 @@ class GarageS3SmokeTest {
         if (garage != null) {
             garage.stop();
         }
+    }
+
+    /**
+     * The S3 port opens before Garage has written its node key to the metadata directory, so an early
+     * `garage status` fails with "Unable to read node key" (seen on a slow CI runner). Retry until the
+     * node reports its ID, for at most 60 seconds, then fail with the last output.
+     */
+    private static String awaitNodeId() throws Exception {
+        Pattern nodeId = Pattern.compile("([0-9a-f]{16})\\s");
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(60);
+        ExecResult last;
+        do {
+            last = garage.execInContainer("/garage", "status");
+            if (last.getExitCode() == 0) {
+                Matcher m = nodeId.matcher(last.getStdout());
+                if (m.find()) {
+                    return m.group(1);
+                }
+            }
+            Thread.sleep(500);
+        } while (System.nanoTime() < deadline);
+        throw new AssertionError("Garage node did not report its ID within 60 s: " + last.getStdout() + " " + last.getStderr());
     }
 
     private static ExecResult exec(String... cmd) throws Exception {
