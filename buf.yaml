@@ -1,0 +1,20 @@
+# buf configuration (task 2.3, ADR-003: buf is mandatory). buf version is pinned in DEPENDENCIES.lock.md.
+# CI runs `buf lint` and `buf breaking --against '.git#branch=main'` from the repository root (task 2.6).
+version: v2
+modules:
+  - path: contracts/proto
+lint:
+  use:
+    - STANDARD
+  except:
+    # The repository keeps one proto directory per bounded context (contracts/proto/<context>/,
+    # structure.md and the verify-contract hook), while packages follow api-standards.md
+    # (autoreliance.<context>.v1, with configuration-assurance -> configuration and
+    # integration-intelligence -> integration). The two cannot both match buf's directory rule.
+    # contracts/tests/test_proto_contracts.py enforces the package-per-directory mapping instead.
+    - PACKAGE_DIRECTORY_MATCH
+breaking:
+  use:
+    # FILE is buf's strictest category: no removed, renamed, renumbered, or retyped field, message,
+    # enum value, or RPC in a v1 package. Breaking changes go into a new v2 package (Req 13.11).
+    - FILE

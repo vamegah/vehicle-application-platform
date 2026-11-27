@@ -32,4 +32,39 @@ jobs:
       - name: Install the pinned contract test requirements
         run: python -m pip install -r contracts/tests/requirements.txt
       - name: Contract tests (includes AsyncAPI CLI validation of every document)
-        run: python -m unittest discover -s contracts/tests -v
+        run: python -m unittest discover -s contracts/tests -p "test_asyncapi*.py" -v
+
+  proto-contracts:
+    # Task 2.3. buf lint and build, the repository proto rules (tenant_id on every request, package per
+    # context directory), buf breaking fixtures, and the Java compile check of the generated stubs.
+    # Task 2.6 adds `buf breaking --against .git#branch=main` on every contracts/proto/ change.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.1.0
+        with:
+          python-version: "3.12.16"
+      - uses: actions/setup-java@v6.3.0
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Install buf 1.75.0 (sha256 from the bufbuild release, recorded in DEPENDENCIES.lock.md)
+        run: |
+          curl -fsSLo buf https://github.com/bufbuild/buf/releases/download/v1.75.0/buf-Linux-x86_64
+          echo "fad1e38d6909bbb583a4da81d8c02a01046e2cd663bde7e337dd24277393764b  buf" | sha256sum -c -
+          chmod +x buf
+          sudo mv buf /usr/local/bin/buf
+          buf --version
+      - name: Install Apache Maven 3.9.16 (sha512 from DEPENDENCIES.lock.md)
+        run: |
+          curl -fsSLo maven.tar.gz https://archive.apache.org/dist/maven/maven-3/3.9.16/binaries/apache-maven-3.9.16-bin.tar.gz \
+            || curl -fsSLo maven.tar.gz https://downloads.apache.org/maven/maven-3/3.9.16/binaries/apache-maven-3.9.16-bin.tar.gz
+          echo "831a8591fe20c8243b1dbe7d71e3244f31d1665b0804b2e825e38cbbe5ce0cafb8338851f90780735568773e0a6cd07bbec107cda0b896b008b861075358b6f6  maven.tar.gz" | sha512sum -c -
+          sudo tar -xzf maven.tar.gz -C /opt
+          sudo ln -sf /opt/apache-maven-3.9.16/bin/mvn /usr/local/bin/mvn
+          mvn -v
+      - name: Proto contract tests (repository rules, buf lint, buf breaking fixtures)
+        run: python -m unittest discover -s contracts/tests -p "test_proto*.py" -v
+      - name: Java compile check of the generated message and gRPC classes
+        working-directory: contracts/proto-java
+        run: mvn -B -ntp verify

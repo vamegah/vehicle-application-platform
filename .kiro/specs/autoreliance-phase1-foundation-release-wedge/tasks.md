@@ -112,7 +112,7 @@ Repository conventions used by every task (from `structure.md`, `api-standards.m
     - Tests: AsyncAPI schema-validation test per file; golden-example tests (valid sample passes; mutated samples fail for a score of 101, a score of -1, an empty `citations`, missing `estimate`, and `estimate: false`); a test that no `$ref` crosses between the three files and no schema name is defined in more than one of them; a test that `release.risk.scored.yaml` has no operation with action `receive` and that no other AsyncAPI file declares a `receive` for `release.risk.scored`; a test that the inline envelopes equal the shared envelope.
     - _Requirements: 6.6, 7.10, 9.12, 8.2, 8.7, 13.4, 13.13, 13.14, 18.1_
 
-  - [ ] 2.3 Define protobuf contracts for gRPC services
+  - [x] 2.3 Define protobuf contracts for gRPC services
     - Add `contracts/proto/configuration-assurance/config_validation.proto` in package `autoreliance.configuration.v1`, covering the validation request (snapshot ID and a `tenant_id` field; trace context and the Internal_Principal via metadata) and result (per-rule status, offending entities, missing data, rule-set version, overall status).
     - Add `contracts/proto/integration-intelligence/graph_facts.proto` in package `autoreliance.integration.v1`, a read-only request (`tenant_id` and snapshot ID) returning the graph neighborhood of a configuration snapshot, used by `configuration-assurance` so only `integration-intelligence` accesses Neo4j.
     - Configure `buf` (`buf.yaml`) with lint and breaking rules so `v1` is never mutated and breaking changes require a `v2` package.

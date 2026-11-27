@@ -1,3 +1,4 @@
 node_modules/
+proto-java/target/
 __pycache__/
 *.pyc

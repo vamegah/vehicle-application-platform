@@ -1,0 +1,98 @@
+// Graph facts gRPC contract of the integration-intelligence bounded context (task 2.3).
+//
+// A versioned, read-only contract that returns the Dependency_Graph neighborhood of a
+// Canonical_Configuration_Snapshot in one call. configuration-assurance uses it so that only
+// integration-intelligence holds Neo4j credentials (Req 7.11, 21.3). Inside the integration-config
+// deployable the caller binds an in-process adapter to the same generated interface; a split
+// deployment uses this gRPC service. It is the only synchronous cross-context call into this context.
+//
+// Tenant and principal (security.md): every request carries tenant_id. The caller's signed
+// Internal_Principal travels in the call metadata key "x-internal-principal" and W3C trace context in
+// "traceparent" and "tracestate". The server returns PERMISSION_DENIED when tenant_id differs from the
+// principal's tenant, and every graph query is scoped to the tenant's label and tenantId property
+// (Req 4.3, 15.3). An unknown snapshot returns NOT_FOUND with the same message whether it is missing or
+// belongs to another tenant.
+//
+// Versioning: this package is v1 and is never mutated incompatibly; a breaking change needs a v2
+// package (Req 13.11). CI enforces it with buf lint and buf breaking.
+syntax = "proto3";
+
+package autoreliance.integration.v1;
+
+option java_multiple_files = true;
+option java_outer_classname = "GraphFactsProto";
+option java_package = "com.autoreliance.contracts.integration.v1";
+
+// Read-only access to the Dependency_Graph for configuration validation.
+service GraphFactsService {
+  // Returns the nodes and relationships reachable from the snapshot's software artifacts.
+  rpc GetSnapshotGraphFacts(GetSnapshotGraphFactsRequest) returns (GetSnapshotGraphFactsResponse);
+}
+
+message GetSnapshotGraphFactsRequest {
+  // Tenant of the snapshot. Must equal the tenant of the Internal_Principal in the call metadata.
+  string tenant_id = 1;
+  // Canonical_ID (UUID) of the Canonical_Configuration_Snapshot.
+  string snapshot_canonical_id = 2;
+  // Maximum traversal depth from the snapshot's software artifacts. 0 means the server default.
+  uint32 max_depth = 3;
+}
+
+message GetSnapshotGraphFactsResponse {
+  // Canonical_ID of the snapshot.
+  string snapshot_canonical_id = 1;
+  // Every node in the neighborhood, including the snapshot's software artifacts.
+  repeated GraphNode nodes = 2;
+  // Every relationship between the returned nodes.
+  repeated GraphRelationship relationships = 3;
+  // True when the depth limit was reached before the neighborhood was complete. A rule that needs
+  // facts beyond the returned neighborhood is NOT_EVALUABLE, never PASS (Req 7.5).
+  bool truncated = 4;
+  // Version of the graph data the facts were read from, for reproducible validation (Req 7.7).
+  int64 graph_version = 5;
+}
+
+// A Dependency_Graph node.
+message GraphNode {
+  // Canonical_ID of the entity.
+  string canonical_id = 1;
+  // Kind of entity.
+  NodeType node_type = 2;
+  // Version of the node as stored in the graph.
+  int64 entity_version = 3;
+  // Descriptive attributes needed by the rules, for example "hardwareRevision", "firmwareVersion",
+  // "calibrationId", "protocol", "supportedRegions", "programmingState". Values are strings; a missing
+  // key means the fact is not known.
+  map<string, string> attributes = 4;
+}
+
+// A Dependency_Graph relationship.
+message GraphRelationship {
+  // Canonical_ID of the source node.
+  string from_canonical_id = 1;
+  // Relationship type (Req 4.2).
+  RelationshipType relationship_type = 2;
+  // Canonical_ID of the target node.
+  string to_canonical_id = 3;
+  // Attributes of the relationship, for example "requiredVersionRange" on DEPENDS_ON or "protocol" on
+  // COMMUNICATES_WITH.
+  map<string, string> attributes = 4;
+}
+
+enum NodeType {
+  NODE_TYPE_UNSPECIFIED = 0;
+  NODE_TYPE_ECU = 1;
+  NODE_TYPE_FIRMWARE_VERSION = 2;
+  NODE_TYPE_CALIBRATION_FILE = 3;
+  NODE_TYPE_SENSOR = 4;
+  NODE_TYPE_CLOUD_SERVICE = 5;
+  NODE_TYPE_SOFTWARE_ARTIFACT = 6;
+}
+
+enum RelationshipType {
+  RELATIONSHIP_TYPE_UNSPECIFIED = 0;
+  RELATIONSHIP_TYPE_DEPENDS_ON = 1;
+  RELATIONSHIP_TYPE_COMMUNICATES_WITH = 2;
+  RELATIONSHIP_TYPE_CALIBRATED_BY = 3;
+  RELATIONSHIP_TYPE_INSTALLED_ON = 4;
+}
