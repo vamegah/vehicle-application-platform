@@ -88,7 +88,9 @@ jobs:
           sudo tar -xzf maven.tar.gz -C /opt
           sudo ln -sf /opt/apache-maven-3.9.16/bin/mvn /usr/local/bin/mvn
           mvn -v
-      - name: Proto contract tests (repository rules, buf lint, buf breaking fixtures)
+      - name: Install the pinned contract test requirements
+        run: python -m pip install -r contracts/tests/requirements.txt
+      - name: Proto contract tests (repository rules, buf lint, buf breaking fixture branches, workflow checks)
         run: python -m unittest discover -s contracts/tests -p "test_proto*.py" -v
       - name: Java compile check of the generated message and gRPC classes
         working-directory: contracts/proto-java
