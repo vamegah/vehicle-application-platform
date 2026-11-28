@@ -1,0 +1,14 @@
+# Deployable data-platform, data-readiness workloads (API now; consumer, worker, and beat from tasks 6.1 and 6.12) (task 1.6). Build context: the repository root (platform/docker-compose.yml sets it).
+# Installs the component from its pyproject.toml (exact pins from DEPENDENCIES.lock.md); no source build tooling
+# remains in the image. Base image pinned by tag and digest in DEPENDENCIES.lock.md.
+FROM python:3.12.16-slim-trixie@sha256:5b5fe805d367f8f5a359ded6ab2652b7f9a206453ee6ee789c0045ba6ec15016
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_DISABLE_PIP_VERSION_CHECK=1 PIP_NO_CACHE_DIR=1
+RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin app
+WORKDIR /app
+COPY services/data-readiness/pyproject.toml services/data-readiness/alembic.ini ./
+COPY services/data-readiness/app ./app
+COPY services/data-readiness/migrations ./migrations
+RUN pip install --no-compile . && rm -rf build *.egg-info
+USER 10001
+EXPOSE 8000
+CMD ["uvicorn", "app.data_readiness.main:app", "--host", "0.0.0.0", "--port", "8000"]

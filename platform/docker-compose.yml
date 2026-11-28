@@ -7,7 +7,12 @@
 # compose refuses to start without it. Every image is pinned by tag and digest and equals its row in
 # DEPENDENCIES.lock.md (no `latest`). Do not change the Garage image without a new dated decision (ADR-019).
 # Host ports bind to 127.0.0.1 only.
-# The deployable container groups, the web app, and the per-deployable profiles are added by task 1.6.
+# Profiles (task 1.6). postgres, kafka, vault, and vault-init have no profile and always start. The other
+# infrastructure has the profiles `infra` and `all`; each deployable has its own profile and `all`; the web app has
+# `web` and `all`. platform/.env sets COMPOSE_PROFILES=all, so `docker compose up -d` starts everything, and
+#   COMPOSE_PROFILES=audit-sink docker compose up -d
+# starts one deployable with only PostgreSQL, Kafka, and Vault. Deployable images are built from the repository
+# root with the artifacts of `python scripts/build`.
 # Known dev-only limitation (ADR-020): Garage cannot scope keys by prefix, so it cannot deny a cross-tenant prefix
 # read inside the shared text bucket; see platform/README.md.
 
@@ -39,7 +44,7 @@ services:
     ports:
       - "127.0.0.1:5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d autoreliance"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d autoreliance"]
       interval: 5s
       timeout: 5s
       retries: 30
@@ -76,6 +81,7 @@ services:
     mem_limit: 1g
 
   neo4j:
+    profiles: [infra, all]
     image: neo4j:5.26.34-community@sha256:2c48628bc28c68d7e2787f76262dfc9d7c21a8f7f290e30da901c489aa7fe50d
     environment:
       NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:?}
@@ -96,6 +102,7 @@ services:
     mem_limit: 1g
 
   redis:
+    profiles: [infra, all]
     # One local Redis (ADR-002): noeviction, logical DB 0 for the Celery broker and DB 1 for the gateway cache.
     image: redis:8.12.0@sha256:56a1737794e36c3ebe8a4544a8ab421af3ab1a6488fb2238aec228c404933fed
     environment:
@@ -113,6 +120,7 @@ services:
     mem_limit: 384m
 
   garage:
+    profiles: [infra, all]
     # ADR-013, ADR-019: the digest equals the ledger row; change it only with a new dated decision.
     image: dxflrs/garage:v2.6.0@sha256:4b5a318fc9fe2fbec5d3af590eeafe05d83492e6411266fa0b9e215c20264013
     command: ["/garage", "server", "--single-node"]
@@ -187,6 +195,7 @@ services:
     mem_limit: 128m
 
   garage-bootstrap:
+    profiles: [infra, all]
     # Reuses the pinned Vault image (BusyBox sh and wget) to drive Garage's admin API: no extra image.
     image: hashicorp/vault:2.2.2@sha256:dfa48c2fa2b0099ccb47681ec5c4804bf5aec9d6879ecfee07ad4b92a5427ad6
     entrypoint: ["/bin/sh", "/scripts/bootstrap.sh"]
@@ -208,6 +217,7 @@ services:
     mem_limit: 128m
 
   otel-collector:
+    profiles: [infra, all]
     image: otel/opentelemetry-collector-contrib:0.166.0@sha256:3e18fe04181de50bdd72e23ad4a4d6214b54351e63d496f1c58127cc4541ad7f
     command: ["--config=/etc/otelcol/config.yaml"]
     volumes:
@@ -220,6 +230,7 @@ services:
     mem_limit: 256m
 
   prometheus:
+    profiles: [infra, all]
     image: prom/prometheus:v3.16.0@sha256:e04987641b57704f408e31f6373ba4138ecf27cb4a165d24aabb6c38fddd0f06
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
@@ -236,6 +247,7 @@ services:
     mem_limit: 512m
 
   grafana:
+    profiles: [infra, all]
     image: grafana/grafana:13.3.2@sha256:81556409ba48b2b922e0adb69a2511337d8ba7578f11962eefa6149a2d815101
     environment:
       GF_SECURITY_ADMIN_USER: admin
@@ -256,6 +268,203 @@ services:
       prometheus:
         condition: service_healthy
     mem_limit: 512m
+
+  # ----------------------------------------------------------------------------- deployables (task 1.6, ADR-005)
+  # data-platform: data-readiness (Python) and legacy-integration (Java). The data-readiness consumer, worker, and
+  # beat workloads join with tasks 6.1 and 6.12; the Kustomize base already defines them.
+  data-readiness-api:
+    profiles: [data-platform, all]
+    image: autoreliance/data-readiness-api:dev
+    build:
+      context: ..
+      dockerfile: platform/deployables/data-platform/Dockerfile.data-readiness
+    ports:
+      - "127.0.0.1:8100:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/data-readiness/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      vault-init:
+        condition: service_completed_successfully
+    mem_limit: 256m
+
+  legacy-integration:
+    profiles: [data-platform, all]
+    image: autoreliance/legacy-integration:dev
+    build:
+      context: ..
+      dockerfile: platform/deployables/data-platform/Dockerfile.legacy-integration
+    environment:
+      AUTORELIANCE_DB_LEGACY_INTEGRATION_URL: jdbc:postgresql://postgres:5432/autoreliance
+      AUTORELIANCE_DB_LEGACY_INTEGRATION_PASSWORD: ${PG_LEGACY_INTEGRATION_PASSWORD:?}
+    ports:
+      - "127.0.0.1:8101:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1:8080/api/v1/legacy-integration/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      vault-init:
+        condition: service_completed_successfully
+    mem_limit: 768m
+
+  # integration-config: integration-intelligence and configuration-assurance in one JVM, two datasources.
+  integration-config:
+    profiles: [integration-config, all]
+    image: autoreliance/integration-config:dev
+    build:
+      context: ..
+      dockerfile: platform/deployables/integration-config/Dockerfile
+    environment:
+      AUTORELIANCE_DB_INTEGRATION_URL: jdbc:postgresql://postgres:5432/autoreliance
+      AUTORELIANCE_DB_INTEGRATION_PASSWORD: ${PG_INTEGRATION_PASSWORD:?}
+      AUTORELIANCE_DB_CONFIGURATION_URL: jdbc:postgresql://postgres:5432/autoreliance
+      AUTORELIANCE_DB_CONFIGURATION_PASSWORD: ${PG_CONFIGURATION_PASSWORD:?}
+    ports:
+      - "127.0.0.1:8102:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1:8080/api/v1/integration-intelligence/health && curl -fsS -o /dev/null http://127.0.0.1:8080/api/v1/configuration-assurance/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      vault-init:
+        condition: service_completed_successfully
+    mem_limit: 1g
+
+  # release-assurance: the Java application and its co-deployed inference sidecar.
+  release-assurance:
+    profiles: [release-assurance, all]
+    image: autoreliance/release-assurance:dev
+    build:
+      context: ..
+      dockerfile: platform/deployables/release-assurance/Dockerfile
+    environment:
+      AUTORELIANCE_DB_RELEASE_URL: jdbc:postgresql://postgres:5432/autoreliance
+      AUTORELIANCE_DB_RELEASE_PASSWORD: ${PG_RELEASE_PASSWORD:?}
+    ports:
+      - "127.0.0.1:8103:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1:8080/api/v1/release-assurance/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      vault-init:
+        condition: service_completed_successfully
+    mem_limit: 768m
+
+  release-assurance-sidecar:
+    profiles: [release-assurance, all]
+    image: autoreliance/release-assurance-sidecar:dev
+    build:
+      context: ..
+      dockerfile: platform/deployables/release-assurance/Dockerfile.inference-sidecar
+    ports:
+      - "127.0.0.1:8104:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/release-assurance/internal/sidecar-health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      vault-init:
+        condition: service_completed_successfully
+    mem_limit: 256m
+
+  api-gateway:
+    profiles: [api-gateway, all]
+    image: autoreliance/api-gateway:dev
+    build:
+      context: ..
+      dockerfile: platform/deployables/api-gateway/Dockerfile
+    ports:
+      - "127.0.0.1:8106:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1:8080/api/v1/api-gateway/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      vault-init:
+        condition: service_completed_successfully
+    mem_limit: 768m
+
+  audit-sink:
+    profiles: [audit-sink, all]
+    image: autoreliance/audit-sink:dev
+    build:
+      context: ..
+      dockerfile: platform/deployables/audit-sink/Dockerfile
+    environment:
+      AUTORELIANCE_DB_AUDIT_URL: jdbc:postgresql://postgres:5432/autoreliance
+      AUTORELIANCE_DB_AUDIT_PASSWORD: ${PG_AUDIT_PASSWORD:?}
+    ports:
+      - "127.0.0.1:8105:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1:8080/api/v1/audit/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 20s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      vault-init:
+        condition: service_completed_successfully
+    mem_limit: 768m
+
+  # The web app (the only frontend). Host port 3001; Grafana keeps 3000.
+  web:
+    profiles: [web, all]
+    image: autoreliance/web:dev
+    build:
+      context: ..
+      dockerfile: platform/deployables/web/Dockerfile
+    ports:
+      - "127.0.0.1:3001:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+    mem_limit: 256m
 
 volumes:
   postgres-data:

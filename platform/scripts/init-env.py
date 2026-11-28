@@ -30,6 +30,8 @@ def garage_key_id() -> str:
 
 def generate() -> dict[str, str]:
     return {
+        # Not a secret (task 1.6): start every profile with a plain `docker compose up -d`.
+        "COMPOSE_PROFILES": "all",
         # Hex only: a value starting with "-" or holding URL or shell metacharacters breaks some CLIs (for example
         # neo4j-admin reads a leading "-" as an option).
         "POSTGRES_PASSWORD": secrets.token_hex(24),

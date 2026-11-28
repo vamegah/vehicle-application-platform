@@ -27,7 +27,29 @@ ENV_FILE = PLATFORM / ".env"
 TENANT_A = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
 TENANT_B = "7f6e5d4c-3b2a-4190-8f7e-6d5c4b3a2910"
 RAW, TEXT = "autoreliance-raw-dev", "autoreliance-text-dev"
-LONG_RUNNING = {"postgres", "kafka", "neo4j", "redis", "garage", "vault", "otel-collector", "prometheus", "grafana"}
+INFRA = {"postgres", "kafka", "neo4j", "redis", "garage", "vault", "otel-collector", "prometheus", "grafana"}
+CORE = {"postgres", "kafka", "vault", "vault-init"}
+# Deployables (task 1.6, ADR-005): profile -> services, and each service's contracted routes on its host port.
+DEPLOYABLE_GROUPS = {
+    "data-platform": ["data-readiness-api", "legacy-integration"],
+    "integration-config": ["integration-config"],
+    "release-assurance": ["release-assurance", "release-assurance-sidecar"],
+    "api-gateway": ["api-gateway"],
+    "audit-sink": ["audit-sink"],
+    "web": ["web"],
+}
+DEPLOYABLE_SERVICES = {s for group in DEPLOYABLE_GROUPS.values() for s in group}
+ROUTES = {
+    "data-readiness-api": [(8100, "/api/v1/data-readiness/health")],
+    "legacy-integration": [(8101, "/api/v1/legacy-integration/health")],
+    "integration-config": [(8102, "/api/v1/integration-intelligence/health"), (8102, "/api/v1/configuration-assurance/health")],
+    "release-assurance": [(8103, "/api/v1/release-assurance/health")],
+    "release-assurance-sidecar": [(8104, "/api/v1/release-assurance/internal/sidecar-health")],
+    "api-gateway": [(8106, "/api/v1/api-gateway/health")],
+    "audit-sink": [(8105, "/api/v1/audit/health")],
+    "web": [(3001, "/")],
+}
+LONG_RUNNING = INFRA | DEPLOYABLE_SERVICES
 WITH_HEALTHCHECK = LONG_RUNNING - {"otel-collector"}
 ONE_SHOT = {"vault-init", "garage-bootstrap"}
 VAULT = "http://127.0.0.1:8200"
@@ -124,7 +146,10 @@ class ComposeSmoke(unittest.TestCase):
         if not ENV_FILE.is_file():
             raise AssertionError("platform/.env missing: run python platform/scripts/init-env.py")
         cls.env = env_values()
-        compose("up", "-d")
+        if cls.env.get("COMPOSE_PROFILES") != "all":
+            raise AssertionError("platform/.env must set COMPOSE_PROFILES=all: run python platform/scripts/init-env.py --force")
+        # Deployable images are built from the artifacts of `python scripts/build` (task 1.6).
+        compose("up", "-d", "--build", timeout=1800)
         wait_for_stack()
         cls.li = s3(cls.env["LEGACY_INTEGRATION_ACCESS_KEY_ID"], cls.env["LEGACY_INTEGRATION_SECRET_ACCESS_KEY"])
         cls.dr = s3(cls.env["DATA_READINESS_ACCESS_KEY_ID"], cls.env["DATA_READINESS_SECRET_ACCESS_KEY"])
@@ -305,6 +330,44 @@ class ComposeSmoke(unittest.TestCase):
                 data = body["data"]["data"]
                 self.assertEqual((data["username"], data["password"], data["host"], data["database"]),
                                  (role, self.pg_secret(role), "postgres", "autoreliance"))
+
+    # --------------------------------------------------------------------------------------- deployables (task 1.6)
+
+    def test_18_every_deployable_answers_its_contracted_routes(self):
+        for service, routes in ROUTES.items():
+            for port, path in routes:
+                with self.subTest(service=service, route=path):
+                    self.assertEqual(http_status(f"http://127.0.0.1:{port}{path}"), 200)
+
+    def test_19_each_profile_starts_one_deployable_with_only_postgres_kafka_and_vault(self):
+        for profile, services in DEPLOYABLE_GROUPS.items():
+            with self.subTest(profile=profile):
+                proc = compose("config", "--services", env={"COMPOSE_PROFILES": profile})
+                self.assertEqual(set(proc.stdout.split()), CORE | set(services))
+
+    def test_20_each_deployable_stays_healthy_while_the_others_are_stopped(self):
+        try:
+            compose("stop", *sorted(DEPLOYABLE_SERVICES))
+            for profile, services in DEPLOYABLE_GROUPS.items():
+                with self.subTest(deployable=profile):
+                    compose("start", *services)
+                    deadline = time.monotonic() + 180
+                    while True:
+                        states = service_states()
+                        if all(states[s].get("Health") == "healthy" for s in services):
+                            break
+                        self.assertLess(time.monotonic(), deadline, f"{profile} not healthy alone: "
+                                        + json.dumps({s: states[s].get("Health") for s in services}))
+                        time.sleep(3)
+                    others = {s for s in DEPLOYABLE_SERVICES - set(services) if states[s].get("State") == "running"}
+                    self.assertEqual(others, set(), "other deployables must be stopped")
+                    for service in services:
+                        for port, path in ROUTES[service]:
+                            self.assertEqual(http_status(f"http://127.0.0.1:{port}{path}"), 200, path)
+                    compose("stop", *services)
+        finally:
+            compose("up", "-d")
+            wait_for_stack()
 
     # --------------------------------------------------------------------------------------- secrets
 

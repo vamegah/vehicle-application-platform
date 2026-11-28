@@ -27,8 +27,23 @@ docker compose ps -a                     # every service healthy; vault-init and
 | prometheus | Prometheus v3.16.0 | 9090 |
 | grafana | Grafana 13.3.2, Prometheus datasource | 3000 |
 
-The deployable container groups, the web app, and the per-deployable compose profiles are added by task 1.6.
 
+## Deployables and profiles (task 1.6)
+
+`python scripts/build` first: the images copy its jars and the Next.js standalone output (the Python images install from `pyproject.toml`). Compose builds them from the repository root with the Dockerfiles in `deployables/`.
+
+| Profile | Services (host port, 127.0.0.1) | Contracted health route |
+|---|---|---|
+| `data-platform` | `data-readiness-api` (8100), `legacy-integration` (8101) | `/api/v1/data-readiness/health`, `/api/v1/legacy-integration/health` |
+| `integration-config` | `integration-config` (8102), both contexts in one JVM | `/api/v1/integration-intelligence/health`, `/api/v1/configuration-assurance/health` |
+| `release-assurance` | `release-assurance` (8103), `release-assurance-sidecar` (8104) | `/api/v1/release-assurance/health`, `/api/v1/release-assurance/internal/sidecar-health` |
+| `api-gateway` | `api-gateway` (8106) | `/api/v1/api-gateway/health` |
+| `audit-sink` | `audit-sink` (8105) | `/api/v1/audit/health` |
+| `web` | `web` (3001) | `/` |
+
+`postgres`, `kafka`, `vault`, and `vault-init` have no profile and always start; the other infrastructure has `infra` and `all`. `platform/.env` sets `COMPOSE_PROFILES=all`, so `docker compose up -d` starts everything. To run one deployable with only PostgreSQL, Kafka, and Vault: `COMPOSE_PROFILES=audit-sink docker compose up -d`. The `data-readiness` consumer, worker, and beat workloads join compose with tasks 6.1 and 6.12.
+
+Local note: an antivirus that re-signs HTTPS (for example Norton Web/Mail Shield) makes `pip install` inside the Python image builds fail with `CERTIFICATE_VERIFY_FAILED`, because containers do not trust its root. CI is not affected.
 ## Secrets
 
 Every secret is generated into `platform/.env` by `scripts/init-env.py` and reaches containers through compose variables. `env.template` lists the names only. No secret is in a committed file, an image, or a log: the Vault dev server's printed root token and unseal key are redacted, and the smoke test checks files, logs, and image layers. Garage logs access key IDs per request; they are identifiers, not secrets.
