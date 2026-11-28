@@ -28,6 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LEDGER = ROOT / "DEPENDENCIES.lock.md"
 
 JAVA_MODULES = (
+    "libs/java/postgres-test-support",
     "services/legacy-integration",
     "services/integration-intelligence",
     "services/configuration-assurance",

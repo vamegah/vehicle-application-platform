@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Shared Java test-support library (task 1.5). Starts one Testcontainers PostgreSQL per test JVM with the image
+  pinned in platform/docker-compose.yml, runs platform/postgres/bootstrap/bootstrap.sql, and hands each context
+  test the JDBC URL and the credential of its own login role. Used with test scope only. Needs Docker.
+  Versions come from DEPENDENCIES.lock.md; artifacts without a <version> are managed by the Spring Boot parent.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>4.1.3</version>
+    <relativePath/>
+  </parent>
+
+  <groupId>com.autoreliance</groupId>
+  <artifactId>postgres-test-support</artifactId>
+  <version>0.1.0</version>
+  <name>postgres-test-support</name>
+
+  <properties>
+    <java.version>21</java.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>testcontainers-postgresql</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+    </dependency>
+  </dependencies>
+</project>

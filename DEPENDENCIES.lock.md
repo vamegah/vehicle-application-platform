@@ -26,9 +26,9 @@ Spring line (ADR-006): Spring Boot 4.1.x with Spring Cloud 2025.1.x (Oakwood). S
 | software.amazon.awssdk:bom | 2.59.10 | ADR-012. Approved by user, Decision 3. Imported in `dependencyManagement` of `legacy-integration`; the `s3` artifact then carries no `<version>`. Latest release in Maven Central metadata on 2026-11-26. Planned (task 7.7). |
 | software.amazon.awssdk:s3 | 2.59.10 | ADR-012, ADR-013. Approved by user, Decision 3. AWS SDK for Java v2, `legacy-integration` only (S3-compatible `StorageProvider` adapter). Client MUST set `requestChecksumCalculation(WHEN_REQUIRED)` and `responseChecksumValidation(WHEN_REQUIRED)`. Task 1.4 result: resolves to 2.59.10 through the BOM; it brings no `com.fasterxml.jackson.databind` (it uses the shaded `third-party-jackson-core`). Against Garage v2.6.0 the Java client with SDK default checksums is rejected (`InvalidRequestException` on PutObject); with when-required it passes put, get, head, delete. Planned (task 7.7). |
 | software.amazon.awssdk:apache5-client | 2.59.10 | ADR-013. Approved by user, Decision 3. The pinned HTTP client artifact. In 2.59.x the `s3` artifact brings `apache5-client` at runtime; the manifest declares it explicitly and excludes `software.amazon.awssdk:netty-nio-client` so the HTTP client is deterministic. Version managed by the AWS SDK BOM. Planned (task 7.7). |
-| org.flywaydb:flyway-core | 12.4.0 | APPROVED beyond the brief (ADR-003). Condition: Java runtime only; Python services use Alembic, never one cross-runtime tool. Version equals `flyway.version` managed by Spring Boot 4.1.3. Planned (task 1.5). |
-| org.flywaydb:flyway-database-postgresql | 12.4.0 | APPROVED with Flyway. Same version as `flyway-core`. Planned (task 1.5). |
-| org.springframework.boot:spring-boot-starter-flyway | 4.1.3 | Boot 4 starter that enables Flyway auto-configuration. Boot-managed. Planned (task 1.5). |
+| org.flywaydb:flyway-core | 12.4.0 | APPROVED beyond the brief (ADR-003). Condition: Java runtime only; Python services use Alembic, never one cross-runtime tool. Version equals `flyway.version` managed by Spring Boot 4.1.3. Used by the five Java contexts with a schema (task 1.5). |
+| org.flywaydb:flyway-database-postgresql | 12.4.0 | APPROVED with Flyway. Same version as `flyway-core`. Used by the five Java contexts with a schema (task 1.5). |
+| org.springframework.boot:spring-boot-starter-flyway | 4.1.3 | Boot 4 starter that enables Flyway auto-configuration. Boot-managed. Used by the five Java contexts with a schema (task 1.5); migrations run at startup as the context role. |
 | org.springframework.kafka:spring-kafka | 4.1.3 | Boot-managed (`spring-kafka.version`). |
 | org.apache.kafka:kafka-clients | 4.2.2 | Boot-managed (`kafka.version`). The platform broker stays Apache Kafka 3.x per `tech.md`. Task 1.4 result (2026-11-26): a kafka-clients 4.2.2 producer and consumer round trip passes against the pinned `apache/kafka:3.9.2` image (`DockerBackedCompatibilityTest`). |
 | org.neo4j.driver:neo4j-java-driver | 6.1.0 | Boot-managed (`neo4j-java-driver.version`). The Neo4j server stays 5.x Community. Task 1.4 result (2026-11-26): driver 6.1.0 connects, runs `RETURN 1`, and reports a 5.x server against the pinned `neo4j:5.26.34-community` image. |
@@ -65,10 +65,10 @@ Toolchain: Python 3.12.16 (latest 3.12.x on endoflife.date/api/python.json, read
 | uvicorn | 0.54.0 | PyPI, 2026-11-26. |
 | pydantic | 2.14.4 | PyPI, 2026-11-26. FastAPI dependency, pinned because services import it directly. |
 | httpx | 0.29.0 | PyPI, 2026-11-26. Test client for FastAPI. |
-| SQLAlchemy | 2.1.9 | PyPI, 2026-11-26. Chosen Python PostgreSQL ORM layer; used with `psycopg`. Planned (task 4.2). |
-| psycopg | 3.3.9 | PyPI, 2026-11-26. Chosen Python PostgreSQL driver (psycopg 3). Planned (task 4.2). |
-| psycopg-binary | 3.3.9 | PyPI, 2026-11-26. Same version as `psycopg`. Planned (task 4.2). |
-| alembic | 1.20.1 | APPROVED beyond the brief (ADR-003). Condition: Python runtime only (`data-readiness`, inference sidecar if it owns tables); Java services use Flyway. Verified on PyPI (requires Python 3.10 or later). Planned (task 1.5). |
+| SQLAlchemy | 2.1.9 | PyPI, 2026-11-26. Chosen Python PostgreSQL ORM layer; used with `psycopg`. Used by data-readiness for Alembic (task 1.5). |
+| psycopg | 3.3.9 | PyPI, 2026-11-26. Chosen Python PostgreSQL driver (psycopg 3). Used by data-readiness for Alembic (task 1.5). |
+| psycopg-binary | 3.3.9 | PyPI, 2026-11-26. Same version as `psycopg`. Used by data-readiness for Alembic (task 1.5). |
+| alembic | 1.20.1 | APPROVED beyond the brief (ADR-003). Condition: Python runtime only (`data-readiness`, inference sidecar if it owns tables); Java services use Flyway. Verified on PyPI (requires Python 3.10 or later). Used by data-readiness (task 1.5); the inference sidecar owns no tables. |
 | setuptools | 84.2.1 | APPROVED by the user on 2026-11-27 (task 1.1). PEP 517 build backend of the Python services (`[build-system] requires` in each service `pyproject.toml`, `build-backend = "setuptools.build_meta"`). Latest on PyPI, read 2026-11-27 (released 2026-10-20; requires Python 3.10 or later). Includes `bdist_wheel`, so no `wheel` package is needed. |
 | pgvector | 0.5.1 | PyPI, 2026-11-26. The Python client for pgvector inside PostgreSQL (no separate vector database). Planned (task 12.1). Needed only if a Python component reads vectors; otherwise task 12.1 moves this row to the not-used section (the release schema itself is migrated by Flyway). |
 | celery | 5.7.0 | PyPI, 2026-11-26 (requires Python 3.10 or later). `data-readiness` only. Runs worker replicas and exactly one beat process (ADR-009). No `celery-redbeat` (not approved). Planned (task 6.1). |
@@ -94,7 +94,7 @@ Toolchain: Python 3.12.16 (latest 3.12.x on endoflife.date/api/python.json, read
 | pytest-asyncio | 1.5.0 | PyPI, 2026-11-26. Planned (task 4.1). |
 | hypothesis | 6.170.17 | PyPI, 2026-11-26. Planned (task 4.6). |
 | pact-python | 4.2.0 | PyPI, 2026-11-26 (requires Python 3.11 or later). Planned (task 15.3). |
-| testcontainers | 4.15.0 | PyPI, 2026-11-26. Python Testcontainers. Object-store tests use `DockerContainer` with the digest-pinned Garage image; no object-store-specific module (`scripts/verification/python/test_garage_boto3_smoke.py`). Planned (task 4.2). |
+| testcontainers | 4.15.0 | PyPI, 2026-11-26. Python Testcontainers. Object-store tests use `DockerContainer` with the digest-pinned Garage image; no object-store-specific module (`scripts/verification/python/test_garage_boto3_smoke.py`). Used by the data-readiness migration test (task 1.5). |
 | PyYAML | 6.0.4 | APPROVED by the user on 2026-11-26 for the contract tests (task 2.1). Reads the AsyncAPI YAML contracts. PyPI, 2026-11-26 (requires Python 3.10 or later). Used only in `contracts/tests/requirements.txt`. |
 | jsonschema | 4.26.0 | APPROVED by the user on 2026-11-26 for the contract tests (task 2.1). Validates golden examples against the AsyncAPI payload schemas (Draft 7). PyPI, 2026-11-26 (requires Python 3.10 or later). Its `date-time` check needs an extra package, so the tests use a standard-library check instead. Used only in `contracts/tests/requirements.txt`. |
 | attrs | 26.1.0 | Pinned exactly as a dependency of jsonschema and referencing (task 2.1, approved with jsonschema). PyPI, 2026-11-26. |

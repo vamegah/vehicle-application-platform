@@ -17,6 +17,7 @@
   <name>autoreliance-platform</name>
 
   <modules>
+    <module>libs/java/postgres-test-support</module>
     <module>services/legacy-integration</module>
     <module>services/integration-intelligence</module>
     <module>services/configuration-assurance</module>

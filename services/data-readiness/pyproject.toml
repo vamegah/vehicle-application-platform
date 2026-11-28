@@ -12,8 +12,13 @@ version = "0.1.0"
 description = "AutoReliance AI data-readiness bounded context"
 requires-python = "==3.12.*"
 dependencies = [
+    # Task 1.5: Alembic migrations in the data_readiness schema, run as the data_readiness login role.
+    "alembic==1.20.1",
     "fastapi==0.165.0",
+    "psycopg==3.3.9",
+    "psycopg-binary==3.3.9",
     "pydantic==2.14.4",
+    "SQLAlchemy==2.1.9",
     "uvicorn==0.54.0",
 ]
 
@@ -21,6 +26,7 @@ dependencies = [
 test = [
     "httpx==0.29.0",
     "pytest==9.2.0",
+    "testcontainers==4.15.0",
 ]
 
 [tool.setuptools.packages.find]
