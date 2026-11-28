@@ -34,6 +34,7 @@ JAVA_MODULES = (
     "services/release-assurance",
     "services/api-gateway",
     "services/audit-sink",
+    "platform/postgres/bootstrap-tests",
 )
 PYTHON_MODULES = (
     "services/data-readiness",

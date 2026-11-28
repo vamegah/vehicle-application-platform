@@ -181,7 +181,9 @@ class BuildRunnerCoverage(unittest.TestCase):
 
     def test_root_pom_lists_every_java_module(self):
         modules = {m.text for m in pom(REPO / "pom.xml").findall("modules/module")}
-        found = {p.parent.relative_to(REPO).as_posix() for p in (REPO / "services").rglob("pom.xml") if "target" not in p.parts}
+        # Java modules: the bounded contexts under services/ and the platform test modules (task 1.3).
+        found = {p.parent.relative_to(REPO).as_posix() for top in ("services", "platform")
+                 for p in (REPO / top).rglob("pom.xml") if "target" not in p.parts}
         self.assertEqual(modules, found)
         self.assertEqual(set(self.runner.JAVA_MODULES), found)
 
