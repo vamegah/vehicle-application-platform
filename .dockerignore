@@ -1,0 +1,18 @@
+# Build context of the deployable images is the repository root (task 1.6). Allow-list: only the built
+# artifacts and component sources the Dockerfiles copy; never secrets, build caches, or virtual environments.
+*
+!services/legacy-integration/target/legacy-integration-0.1.0.jar
+!services/release-assurance/target/release-assurance-0.1.0.jar
+!services/api-gateway/target/api-gateway-0.1.0.jar
+!services/audit-sink/target/audit-sink-0.1.0.jar
+!platform/deployables/integration-config/target/integration-config-0.1.0.jar
+!services/data-readiness/pyproject.toml
+!services/data-readiness/alembic.ini
+!services/data-readiness/app/**
+!services/data-readiness/migrations/**
+!services/release-assurance/inference-sidecar/pyproject.toml
+!services/release-assurance/inference-sidecar/app/**
+!apps/web/.next/standalone/**
+!apps/web/.next/static/**
+**/__pycache__
+**/*.pyc

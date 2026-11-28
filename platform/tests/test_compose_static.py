@@ -24,6 +24,16 @@ PINNED_IMAGE = re.compile(r"^[a-z0-9][a-z0-9._/-]*:[A-Za-z0-9][A-Za-z0-9._-]*@sh
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 SECRET_NAMES = re.compile(r"(?i)(password|secret|token)")
 ONE_SHOT = {"vault-init", "garage-bootstrap"}
+CORE = {"postgres", "kafka", "vault", "vault-init"}
+SUPPORTING = {"neo4j", "redis", "garage", "garage-bootstrap", "otel-collector", "prometheus", "grafana"}
+# Deployable services (task 1.6) -> profile; images are built locally from platform/deployables/.
+DEPLOYABLES = {
+    "data-readiness-api": "data-platform", "legacy-integration": "data-platform", "integration-config": "integration-config",
+    "release-assurance": "release-assurance", "release-assurance-sidecar": "release-assurance", "api-gateway": "api-gateway",
+    "audit-sink": "audit-sink", "web": "web",
+}
+LOCAL_IMAGE = re.compile(r"^autoreliance/[a-z0-9-]+:dev$")
+DOCKERFILES = sorted((PLATFORM / "deployables").rglob("Dockerfile*"))
 
 
 def compose_text() -> str:
@@ -46,7 +56,8 @@ def services(text: str) -> dict[str, str]:
 
 
 def images(text: str) -> list[str]:
-    return [m.group(1).strip() for m in re.finditer(r"(?m)^\s+image:\s*(\S+)\s*$", text)]
+    """Pulled images; locally built deployable images (autoreliance/<name>:dev) are checked through their Dockerfile."""
+    return [r for r in (m.group(1).strip() for m in re.finditer(r"(?m)^\s+image:\s*(\S+)\s*$", text)) if not LOCAL_IMAGE.match(r)]
 
 
 def ledger_image_rows() -> set[str]:
@@ -91,10 +102,47 @@ class Services(unittest.TestCase):
     def setUp(self):
         self.svc = services(compose_text())
 
-    def test_the_infrastructure_services_exist(self):
-        expected = {"postgres", "kafka", "neo4j", "redis", "garage", "vault", "vault-init", "garage-bootstrap",
-                    "otel-collector", "prometheus", "grafana"}
-        self.assertEqual(set(self.svc), expected)
+    def test_the_infrastructure_and_deployable_services_exist(self):
+        self.assertEqual(set(self.svc), CORE | SUPPORTING | set(DEPLOYABLES))
+
+    def test_profiles_let_each_deployable_start_with_only_postgres_kafka_and_vault(self):
+        for name in CORE:
+            with self.subTest(service=name):
+                self.assertNotIn("profiles:", self.svc[name])
+        for name in SUPPORTING:
+            with self.subTest(service=name):
+                self.assertIn("    profiles: [infra, all]\n", self.svc[name])
+        for name, profile in DEPLOYABLES.items():
+            with self.subTest(service=name):
+                self.assertIn(f"    profiles: [{profile}, all]\n", self.svc[name])
+                deps = set(re.findall(r"(?m)^      ([a-z0-9-]+):\n        condition:", self.svc[name]))
+                self.assertTrue(deps <= CORE, f"{name} depends on {deps - CORE}")
+
+    def test_deployables_are_built_from_platform_deployables_with_a_local_tag(self):
+        for name in DEPLOYABLES:
+            with self.subTest(service=name):
+                block = self.svc[name]
+                self.assertIn(f"    image: autoreliance/{name}:dev\n", block)
+                self.assertIn("      context: ..\n", block)
+                dockerfile = re.search(r"dockerfile: (\S+)", block).group(1)
+                self.assertTrue(dockerfile.startswith("platform/deployables/"), dockerfile)
+                self.assertTrue((REPO / dockerfile).is_file(), dockerfile)
+                self.assertIn("healthcheck:", block)
+
+    def test_every_dockerfile_base_image_is_pinned_and_in_the_ledger(self):
+        self.assertGreaterEqual(len(DOCKERFILES), 8)
+        rows = ledger_image_rows()
+        for path in DOCKERFILES:
+            for ref in re.findall(r"(?m)^FROM\s+(\S+)", path.read_text(encoding="utf-8")):
+                with self.subTest(dockerfile=path.relative_to(REPO).as_posix(), image=ref):
+                    self.assertRegex(ref, PINNED_IMAGE)
+                    self.assertIn(ref, rows)
+
+    def test_every_image_runs_as_a_non_root_user(self):
+        for path in DOCKERFILES:
+            with self.subTest(dockerfile=path.relative_to(REPO).as_posix()):
+                users = re.findall(r"(?m)^USER\s+(\S+)", path.read_text(encoding="utf-8"))
+                self.assertTrue(users and users[-1] not in {"root", "0"})
 
     def test_every_service_has_a_memory_limit(self):
         for name, block in self.svc.items():
@@ -216,7 +264,8 @@ class LocalSecrets(unittest.TestCase):
     def test_every_compose_variable_is_in_the_template(self):
         used = set(re.findall(r"\$\{([A-Z0-9_]+):\?", compose_text()))
         names = {l.split("=", 1)[0] for l in ENV_TEMPLATE.read_text(encoding="utf-8").splitlines() if l and not l.startswith("#")}
-        self.assertEqual(used, names)
+        # COMPOSE_PROFILES is read by compose itself, not interpolated (task 1.6).
+        self.assertEqual(used, names - {"COMPOSE_PROFILES"})
 
     def test_generated_env_file_is_ignored_by_git(self):
         self.assertIn("platform/.env", (REPO / ".gitignore").read_text(encoding="utf-8").splitlines())
