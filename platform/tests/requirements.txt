@@ -1,0 +1,5 @@
+# Compose smoke test (task 1.2). Exact pins with rows in DEPENDENCIES.lock.md. boto3 makes raw S3 requests
+# (no platform adapter) against Garage; Vault is queried over HTTP with the standard library.
+boto3==1.44.12
+botocore==1.44.12
+s3transfer==0.19.3

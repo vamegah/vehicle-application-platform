@@ -1,0 +1,45 @@
+name: compose
+
+# Task 1.2. Static checks of platform/docker-compose.yml, then the scripted smoke test: start the stack, poll every
+# health check, query Vault, exercise Garage with raw S3 requests (read-write and read-only keys, the failing-access
+# cases, and the recorded dev limitation), re-run both init jobs, and scan files, logs, and image layers for secrets.
+# A skipped smoke test fails the job.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compose-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.1.0
+        with:
+          python-version: "3.12.16"
+      - name: Static compose checks
+        run: python -m unittest discover -s platform/tests -p "test_compose_static.py" -v
+      - name: Install pinned smoke-test requirements
+        run: python -m pip install -r platform/tests/requirements.txt
+      - name: Generate local secrets
+        run: python platform/scripts/init-env.py
+      - name: Compose smoke test
+        env:
+          AR_COMPOSE_SMOKE: "1"
+        run: |
+          python -m unittest discover -s platform/tests -p "test_compose_smoke.py" -v 2>&1 | tee smoke.log
+          test "${PIPESTATUS[0]}" -eq 0
+          if grep -qiE "skipped" smoke.log; then echo "the compose smoke test was skipped"; exit 1; fi
+      - name: Service logs on failure
+        if: failure()
+        working-directory: platform
+        run: docker compose ps -a; docker compose logs --no-color --tail 80
+      - name: Stop the stack
+        if: always()
+        working-directory: platform
+        run: docker compose down -v

@@ -1,0 +1,22 @@
+# Garage v2.6.0 configuration for local development (task 1.2, ADR-013, ADR-019).
+# Secrets are NOT in this file: the RPC secret and the admin token come from the environment
+# (GARAGE_RPC_SECRET and GARAGE_ADMIN_TOKEN, generated into the untracked platform/.env by
+# platform/scripts/init-env.py).
+
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "lmdb"
+
+replication_factor = 1
+
+rpc_bind_addr = "[::]:3901"
+rpc_public_addr = "127.0.0.1:3901"
+
+[s3_api]
+s3_region = "garage"
+api_bind_addr = "[::]:3900"
+
+# No [s3_web] section: the web endpoint is disabled.
+
+[admin]
+api_bind_addr = "[::]:3903"
