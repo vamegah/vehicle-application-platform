@@ -47,14 +47,17 @@ class PostgresBootstrapTest {
     static final UUID TENANT_A = UUID.fromString("0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d");
     static final UUID TENANT_B = UUID.fromString("7f6e5d4c-3b2a-4190-8f7e-6d5c4b3a2910");
 
+    /** Every login role the bootstrap creates: the six context roles and the audit application role. */
+    static final List<String> LOGIN_ROLES = java.util.stream.Stream
+            .concat(CONTEXT_ROLES.stream(), java.util.stream.Stream.of("audit_app")).toList();
+
     static final Path PLATFORM = Path.of("").toAbsolutePath().getParent().getParent();
+
+    /** Credentials generated per test run for each login role; never stored. */
     static final Map<String, String> PASSWORDS = new LinkedHashMap<>();
 
     static {
-        for (String role : CONTEXT_ROLES) {
-            PASSWORDS.put(role, UUID.randomUUID().toString());
-        }
-        PASSWORDS.put("audit_app", UUID.randomUUID().toString());
+        LOGIN_ROLES.forEach(role -> PASSWORDS.put(role, UUID.randomUUID().toString()));
     }
 
     @Container

@@ -269,17 +269,21 @@ class ComposeSmoke(unittest.TestCase):
 
     # --------------------------------------------------------------------------------------- PostgreSQL (task 1.3)
 
-    PG_ROLES = {
-        "data_readiness": "PG_DATA_READINESS_PASSWORD", "legacy_integration": "PG_LEGACY_INTEGRATION_PASSWORD",
-        "integration": "PG_INTEGRATION_PASSWORD", "configuration": "PG_CONFIGURATION_PASSWORD",
-        "release": "PG_RELEASE_PASSWORD", "audit": "PG_AUDIT_PASSWORD", "audit_app": "PG_AUDIT_APP_PASSWORD",
-    }
+    PG_ROLES = ("data_readiness", "legacy_integration", "integration", "configuration", "release", "audit", "audit_app")
+
+    @staticmethod
+    def pg_variable(role: str) -> str:
+        """Name of the platform/.env variable that holds the role's credential (PG_<ROLE>_PASSWORD)."""
+        return f"PG_{role.upper()}_PASSWORD"
+
+    def pg_secret(self, role: str) -> str:
+        return self.env[self.pg_variable(role)]
 
     def psql_as(self, role: str, sql: str) -> subprocess.CompletedProcess:
         # `-e PGPASSWORD` without a value copies it from this process's environment: never on a command line.
         return compose("exec", "-T", "-e", "PGPASSWORD", "postgres", "psql",
                        "-h", "127.0.0.1", "-U", role, "-d", "autoreliance", "-At", "-v", "ON_ERROR_STOP=1",
-                       "-c", sql, check=False, env={"PGPASSWORD": self.env[self.PG_ROLES[role]]})
+                       "-c", sql, check=False, env={"PGPASSWORD": self.pg_secret(role)})
 
     def test_16_bootstrap_created_each_context_schema_and_login_role(self):
         for role in self.PG_ROLES:
@@ -294,13 +298,13 @@ class ComposeSmoke(unittest.TestCase):
         self.assertEqual(proc.stdout.strip(), "vector")
 
     def test_17_vault_holds_each_postgres_role_credential(self):
-        for role, var in self.PG_ROLES.items():
+        for role in self.PG_ROLES:
             with self.subTest(role=role):
                 status, body = vault_get(f"kv/data/platform/postgres/{role}", self.env["VAULT_DEV_ROOT_TOKEN"])
                 self.assertEqual(status, 200)
                 data = body["data"]["data"]
                 self.assertEqual((data["username"], data["password"], data["host"], data["database"]),
-                                 (role, self.env[var], "postgres", "autoreliance"))
+                                 (role, self.pg_secret(role), "postgres", "autoreliance"))
 
     # --------------------------------------------------------------------------------------- secrets
 
