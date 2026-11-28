@@ -1,0 +1,29 @@
+# Deployable integration-config (task 1.6). This file comes first on the classpath and replaces the two contexts'
+# standalone application.yml files. Each context keeps its own database settings (environment, Vault from task 4.4):
+#   AUTORELIANCE_DB_INTEGRATION_URL, AUTORELIANCE_DB_INTEGRATION_PASSWORD        (role `integration`)
+#   AUTORELIANCE_DB_CONFIGURATION_URL, AUTORELIANCE_DB_CONFIGURATION_PASSWORD    (role `configuration`)
+spring:
+  application:
+    name: integration-config
+
+autoreliance:
+  db:
+    integration:
+      pool-size: 5
+    configuration:
+      pool-size: 5
+
+# One health group per context (ADR-005 rule 5): a failing context reports DOWN in its own group and on its own
+# contracted health route without hiding the healthy one.
+management:
+  health:
+    db:
+      enabled: false
+  endpoint:
+    health:
+      show-components: always
+      group:
+        integration-intelligence:
+          include: integrationDatabase
+        configuration-assurance:
+          include: configurationDatabase

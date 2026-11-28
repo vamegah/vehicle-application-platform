@@ -225,8 +225,10 @@ class MigrationToolPerRuntime(unittest.TestCase):
             with self.subTest(context=ctx):
                 module = REPO / "services" / ctx
                 arts = {d.findtext("artifactId") for d in pom(module / "pom.xml").iter("dependency")}
-                self.assertTrue({"flyway-core", "flyway-database-postgresql", "spring-boot-starter-flyway"} <= arts)
-                self.assertTrue((module / "src/main/resources/db/migration/V1__baseline.sql").is_file())
+                self.assertTrue({"flyway-core", "flyway-database-postgresql", "spring-boot-starter-jdbc"} <= arts)
+                schema = {"legacy-integration": "legacy_integration", "integration-intelligence": "integration", "configuration-assurance": "configuration", "release-assurance": "release", "audit-sink": "audit"}[ctx]
+                # Task 1.6: migrations live under db/migration/<schema>/ so two contexts can share one classpath.
+                self.assertTrue((module / f"src/main/resources/db/migration/{schema}/V1__baseline.sql").is_file())
 
     def test_data_readiness_uses_alembic_and_the_sidecar_has_no_migrations(self):
         dr = REPO / "services/data-readiness"

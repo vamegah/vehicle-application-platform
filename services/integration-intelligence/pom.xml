@@ -3,8 +3,8 @@
   integration-intelligence bounded context. Java 21, Spring Boot 4.1.x. Versions come from DEPENDENCIES.lock.md; artifacts without a
   <version> are managed by the Spring Boot parent.
   Contract: contracts/openapi/integration-intelligence.yaml (health route /api/v1/integration-intelligence/health).
-  Database (task 1.5): Flyway migrations in src/main/resources/db/migration/ run at startup in the `integration`
-  schema as the `integration` login role (one datasource, own schema; platform/postgres/bootstrap/bootstrap.sql).
+  Database (tasks 1.5, 1.6): IntegrationIntelligencePersistence wires one datasource as the `integration` login role and runs the Flyway
+  migrations of src/main/resources/db/migration/integration/ at startup in the `integration` schema only.
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -34,7 +34,11 @@
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
-      <artifactId>spring-boot-starter-flyway</artifactId>
+      <artifactId>spring-boot-starter-jdbc</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
     <dependency>
       <groupId>org.flywaydb</groupId>
@@ -67,6 +71,11 @@
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
+        <configuration>
+          <!-- The runnable jar gets the `exec` classifier so the plain jar stays the main artifact that the
+               integration-config deployable depends on (task 1.6). -->
+          <classifier>exec</classifier>
+        </configuration>
       </plugin>
     </plugins>
   </build>

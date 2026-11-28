@@ -25,5 +25,6 @@
     <module>services/api-gateway</module>
     <module>services/audit-sink</module>
     <module>platform/postgres/bootstrap-tests</module>
+    <module>platform/deployables/integration-config</module>
   </modules>
 </project>
