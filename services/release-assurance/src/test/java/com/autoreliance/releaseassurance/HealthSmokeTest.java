@@ -33,8 +33,8 @@ class HealthSmokeTest {
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry registry) {
         BootstrappedPostgres pg = BootstrappedPostgres.shared();
-        registry.add("spring.datasource.url", pg::jdbcUrl);
-        registry.add("spring.datasource.password", () -> pg.credentialFor(SCHEMA));
+        registry.add("autoreliance.db." + SCHEMA + ".url", pg::jdbcUrl);
+        registry.add("autoreliance.db." + SCHEMA + ".password", () -> pg.credentialFor(SCHEMA));
     }
 
     @Value("${local.server.port}")

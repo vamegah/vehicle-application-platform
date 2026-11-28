@@ -36,6 +36,7 @@ JAVA_MODULES = (
     "services/api-gateway",
     "services/audit-sink",
     "platform/postgres/bootstrap-tests",
+    "platform/deployables/integration-config",
 )
 PYTHON_MODULES = (
     "services/data-readiness",

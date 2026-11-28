@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Deployable integration-config (ADR-005, task 1.6): one Spring Boot application that packages the
+  integration-intelligence and configuration-assurance bounded contexts in one JVM. Each context keeps its own
+  datasource and login role, its own Flyway run in its own schema, and its own health group. Context code and
+  contracts stay in services/ and contracts/; this module only assembles them.
+  Versions come from DEPENDENCIES.lock.md; artifacts without a <version> are managed by the Spring Boot parent.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>4.1.3</version>
+    <relativePath/>
+  </parent>
+
+  <groupId>com.autoreliance</groupId>
+  <artifactId>integration-config</artifactId>
+  <version>0.1.0</version>
+  <name>integration-config</name>
+
+  <properties>
+    <java.version>21</java.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.autoreliance</groupId>
+      <artifactId>integration-intelligence</artifactId>
+      <version>0.1.0</version>
+    </dependency>
+    <dependency>
+      <groupId>com.autoreliance</groupId>
+      <artifactId>configuration-assurance</artifactId>
+      <version>0.1.0</version>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.autoreliance</groupId>
+      <artifactId>postgres-test-support</artifactId>
+      <version>0.1.0</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+</project>
