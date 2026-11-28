@@ -9,6 +9,7 @@
 #   - the gateway's Internal_Principal signing key (transit/keys/internal-principal, ed25519)
 #   - kv/platform/redis/broker and kv/platform/redis/cache (one local Redis, logical DB 0 and 1)
 #   - kv/platform/storage/settings (endpoint, region garage, path-style)
+#   - kv/platform/postgres/<role> for each per-context login role of the PostgreSQL bootstrap (task 1.3)
 #   - kv/tenants/<tenantId>/storage/legacy-integration and .../data-readiness (the two Garage keys, identical
 #     for every seed tenant because Garage cannot scope keys by prefix: the named dev limitation, ADR-020)
 #   - kv/tenants/<tenantId>/storage/layout = shared (no dedicated bucket in compose)
@@ -17,6 +18,7 @@ set -eu
 : "${VAULT_ADDR:?}" "${VAULT_TOKEN:?}" "${SEED_TENANT_IDS:?}" "${REDIS_PASSWORD:?}"
 : "${LEGACY_INTEGRATION_ACCESS_KEY_ID:?}" "${LEGACY_INTEGRATION_SECRET_ACCESS_KEY:?}"
 : "${DATA_READINESS_ACCESS_KEY_ID:?}" "${DATA_READINESS_SECRET_ACCESS_KEY:?}"
+: "${PG_DATA_READINESS_PASSWORD:?}" "${PG_LEGACY_INTEGRATION_PASSWORD:?}" "${PG_INTEGRATION_PASSWORD:?}" "${PG_CONFIGURATION_PASSWORD:?}" "${PG_RELEASE_PASSWORD:?}" "${PG_AUDIT_PASSWORD:?}" "${PG_AUDIT_APP_PASSWORD:?}"
 
 log() { echo "vault-init: $*"; }
 
@@ -57,6 +59,13 @@ ensure_transit_key internal-principal ed25519
 ensure_kv platform/redis/broker url="redis://default:${REDIS_PASSWORD}@redis:6379/0"
 ensure_kv platform/redis/cache url="redis://default:${REDIS_PASSWORD}@redis:6379/1"
 ensure_kv platform/storage/settings endpoint="http://garage:3900" region="garage" pathStyle="true"
+ensure_kv platform/postgres/data_readiness username="data_readiness" password="${PG_DATA_READINESS_PASSWORD}" host="postgres" port="5432" database="autoreliance"
+ensure_kv platform/postgres/legacy_integration username="legacy_integration" password="${PG_LEGACY_INTEGRATION_PASSWORD}" host="postgres" port="5432" database="autoreliance"
+ensure_kv platform/postgres/integration username="integration" password="${PG_INTEGRATION_PASSWORD}" host="postgres" port="5432" database="autoreliance"
+ensure_kv platform/postgres/configuration username="configuration" password="${PG_CONFIGURATION_PASSWORD}" host="postgres" port="5432" database="autoreliance"
+ensure_kv platform/postgres/release username="release" password="${PG_RELEASE_PASSWORD}" host="postgres" port="5432" database="autoreliance"
+ensure_kv platform/postgres/audit username="audit" password="${PG_AUDIT_PASSWORD}" host="postgres" port="5432" database="autoreliance"
+ensure_kv platform/postgres/audit_app username="audit_app" password="${PG_AUDIT_APP_PASSWORD}" host="postgres" port="5432" database="autoreliance"
 
 for tenant in $SEED_TENANT_IDS; do
   ensure_transit_key "tenant-$tenant" aes256-gcm96

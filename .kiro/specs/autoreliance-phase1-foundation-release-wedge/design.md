@@ -841,6 +841,8 @@ Table permissions: application role has `INSERT, SELECT` only.
 
 All tables in every schema carry `tenant_id` and a `FORCE ROW LEVEL SECURITY` policy comparing to `current_setting('app.tenant_id', true)`.
 
+**PostgreSQL bootstrap (task 1.3).** `platform/postgres/bootstrap/bootstrap.sql` (psql, idempotent) creates one schema and one login role per context with the same name (`data_readiness`, `legacy_integration`, `integration`, `configuration`, `release`, `audit`); the role owns its schema, runs its migrations, and holds no privilege on any other schema. The `audit` schema also has the application role `audit_app` with `INSERT, SELECT` only (default privileges on every table the `audit` role creates). The schema `platform` holds only the shared function `platform.enable_tenant_rls(regclass)`, callable by the six context roles from Flyway and Alembic migrations; it requires a `tenant_id uuid` column, enables and forces row-level security, and (re)creates the policy `tenant_isolation` as `tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid` for both `USING` and `WITH CHECK`. `NULLIF` is needed because PostgreSQL leaves the empty string in a pooled session after a `SET LOCAL app.tenant_id` transaction ends; without it the next query without a tenant would fail on `''::uuid` instead of returning zero rows (Req 15.5). Locally the role passwords come from `platform/.env` and are also written to Vault at `kv/platform/postgres/<role>`.
+
 ### Event envelope (all topics, AsyncAPI-defined)
 
 ```

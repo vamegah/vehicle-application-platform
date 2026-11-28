@@ -33,6 +33,14 @@ def generate() -> dict[str, str]:
         # Hex only: a value starting with "-" or holding URL or shell metacharacters breaks some CLIs (for example
         # neo4j-admin reads a leading "-" as an option).
         "POSTGRES_PASSWORD": secrets.token_hex(24),
+        # Per-context login roles of the PostgreSQL bootstrap (task 1.3).
+        "PG_DATA_READINESS_PASSWORD": secrets.token_hex(24),
+        "PG_LEGACY_INTEGRATION_PASSWORD": secrets.token_hex(24),
+        "PG_INTEGRATION_PASSWORD": secrets.token_hex(24),
+        "PG_CONFIGURATION_PASSWORD": secrets.token_hex(24),
+        "PG_RELEASE_PASSWORD": secrets.token_hex(24),
+        "PG_AUDIT_PASSWORD": secrets.token_hex(24),
+        "PG_AUDIT_APP_PASSWORD": secrets.token_hex(24),
         "NEO4J_PASSWORD": secrets.token_hex(24),
         "REDIS_PASSWORD": secrets.token_hex(24),
         "GRAFANA_ADMIN_PASSWORD": secrets.token_hex(24),

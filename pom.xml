@@ -23,5 +23,6 @@
     <module>services/release-assurance</module>
     <module>services/api-gateway</module>
     <module>services/audit-sink</module>
+    <module>platform/postgres/bootstrap-tests</module>
   </modules>
 </project>

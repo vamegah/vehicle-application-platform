@@ -17,7 +17,7 @@ docker compose ps -a                     # every service healthy; vault-init and
 
 | Service | Image (pinned in `DEPENDENCIES.lock.md`) | Host port (127.0.0.1 only) |
 |---|---|---|
-| postgres | PostgreSQL 16.16 with pgvector 0.8.7 (`vector` extension enabled in `autoreliance`) | 5432 |
+| postgres | PostgreSQL 16.16 with pgvector 0.8.7 (`vector` extension enabled in `autoreliance`); the bootstrap of task 1.3 creates the per-context schemas and roles | 5432 |
 | kafka | Apache Kafka 3.9.2, single KRaft node, topic auto-creation off | 9094 (`localhost:9094`) |
 | neo4j | Neo4j 5.26 Community | 7474, 7687 |
 | redis | Redis 8.12, one instance, `noeviction`; DB 0 broker, DB 1 cache (ADR-002) | 6379 |
@@ -37,10 +37,14 @@ Every secret is generated into `platform/.env` by `scripts/init-env.py` and reac
 
 Both jobs are idempotent and run on every `docker compose up`.
 
-- `vault-init` (`vault/init.sh`) enables the KV version 2 mount `kv/` and transit, and creates what is missing: a transit key per seed tenant (`tenant-<tenantId>`), the gateway's Internal_Principal signing key (`internal-principal`, ed25519), `kv/platform/redis/broker` and `kv/platform/redis/cache`, `kv/platform/storage/settings` (endpoint `http://garage:3900`, region `garage`, path-style), and for each seed tenant `kv/tenants/<tenantId>/storage/legacy-integration`, `.../data-readiness`, and `.../layout` (`storage.layout=shared`). No KMS key is seeded (local key strategy `none`, ADR-015).
+- `vault-init` (`vault/init.sh`) enables the KV version 2 mount `kv/` and transit, and creates what is missing: a transit key per seed tenant (`tenant-<tenantId>`), the gateway's Internal_Principal signing key (`internal-principal`, ed25519), `kv/platform/redis/broker` and `kv/platform/redis/cache`, `kv/platform/storage/settings` (endpoint `http://garage:3900`, region `garage`, path-style), and for each seed tenant `kv/tenants/<tenantId>/storage/legacy-integration`, `.../data-readiness`, and `.../layout` (`storage.layout=shared`). No KMS key is seeded (local key strategy `none`, ADR-015). It also writes `kv/platform/postgres/<role>` (username, password, host, port, database) for each PostgreSQL login role.
 - `garage-bootstrap` (`garage/bootstrap.sh`) runs in the pinned Vault image and drives Garage's admin API v2 (the Garage image has no shell, and `garage key import` fails with 409 on a repeat). It creates exactly two buckets, `autoreliance-raw-dev` and `autoreliance-text-dev`, imports the two keys from `platform/.env`, grants `legacy-integration` read and write on both buckets, and grants `data-readiness` read on the text bucket only.
 
 Seed tenants (fictional, key prefixes, never buckets): `0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d` and `7f6e5d4c-3b2a-4190-8f7e-6d5c4b3a2910`.
+
+## PostgreSQL bootstrap (task 1.3)
+
+On the first start of an empty volume, `postgres/initdb/02-bootstrap.sh` runs `postgres/bootstrap/bootstrap.sql` (psql, idempotent): one schema and one login role per context (`data_readiness`, `legacy_integration`, `integration`, `configuration`, `release`, `audit`), each owning its schema and denied every other schema, plus `audit_app` with `INSERT, SELECT` only on the audit tables. Migrations make a table tenant-scoped with `SELECT platform.enable_tenant_rls('<schema>.<table>');`. The passwords are the `PG_*_PASSWORD` values in `platform/.env`. The Testcontainers tests are in `postgres/bootstrap-tests` (run by `python scripts/build`).
 
 ## Known dev-only limitation (ADR-020)
 

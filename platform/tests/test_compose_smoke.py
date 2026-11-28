@@ -50,9 +50,10 @@ def env_values() -> dict[str, str]:
     return out
 
 
-def compose(*args: str, check: bool = True, timeout: int = 900) -> subprocess.CompletedProcess:
+def compose(*args: str, check: bool = True, timeout: int = 900, env: dict | None = None) -> subprocess.CompletedProcess:
     proc = subprocess.run(["docker", "compose", *args], cwd=PLATFORM, capture_output=True, text=True,
-                          encoding="utf-8", errors="replace", timeout=timeout)
+                          encoding="utf-8", errors="replace", timeout=timeout,
+                          env=None if env is None else {**os.environ, **env})
     if check and proc.returncode != 0:
         raise AssertionError(f"docker compose {' '.join(args)} failed ({proc.returncode}):\n{proc.stdout}\n{proc.stderr}")
     return proc
@@ -265,6 +266,45 @@ class ComposeSmoke(unittest.TestCase):
         self.assertEqual(set(re.findall(r"\bautoreliance-[a-z0-9-]+\b", out)), {RAW, TEXT})
         with self.assertRaises(ClientError):
             self.dr.put_object(Bucket=TEXT, Key=f"{TENANT_A}/text/documents/x/{uuid.uuid4().hex}.txt", Body=b"x")
+
+    # --------------------------------------------------------------------------------------- PostgreSQL (task 1.3)
+
+    PG_ROLES = ("data_readiness", "legacy_integration", "integration", "configuration", "release", "audit", "audit_app")
+
+    @staticmethod
+    def pg_variable(role: str) -> str:
+        """Name of the platform/.env variable that holds the role's credential (PG_<ROLE>_PASSWORD)."""
+        return f"PG_{role.upper()}_PASSWORD"
+
+    def pg_secret(self, role: str) -> str:
+        return self.env[self.pg_variable(role)]
+
+    def psql_as(self, role: str, sql: str) -> subprocess.CompletedProcess:
+        # `-e PGPASSWORD` without a value copies it from this process's environment: never on a command line.
+        return compose("exec", "-T", "-e", "PGPASSWORD", "postgres", "psql",
+                       "-h", "127.0.0.1", "-U", role, "-d", "autoreliance", "-At", "-v", "ON_ERROR_STOP=1",
+                       "-c", sql, check=False, env={"PGPASSWORD": self.pg_secret(role)})
+
+    def test_16_bootstrap_created_each_context_schema_and_login_role(self):
+        for role in self.PG_ROLES:
+            with self.subTest(role=role):
+                own = "audit" if role == "audit_app" else role
+                proc = self.psql_as(role, f"SELECT has_schema_privilege('{own}', 'USAGE')")
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                self.assertEqual(proc.stdout.strip(), "t")
+        proc = self.psql_as("legacy_integration", "SELECT has_schema_privilege('data_readiness', 'USAGE')")
+        self.assertEqual(proc.stdout.strip(), "f", "contexts in data-platform must not see each other's schema")
+        proc = self.psql_as("data_readiness", "SELECT extname FROM pg_extension WHERE extname = 'vector'")
+        self.assertEqual(proc.stdout.strip(), "vector")
+
+    def test_17_vault_holds_each_postgres_role_credential(self):
+        for role in self.PG_ROLES:
+            with self.subTest(role=role):
+                status, body = vault_get(f"kv/data/platform/postgres/{role}", self.env["VAULT_DEV_ROOT_TOKEN"])
+                self.assertEqual(status, 200)
+                data = body["data"]["data"]
+                self.assertEqual((data["username"], data["password"], data["host"], data["database"]),
+                                 (role, self.pg_secret(role), "postgres", "autoreliance"))
 
     # --------------------------------------------------------------------------------------- secrets
 
