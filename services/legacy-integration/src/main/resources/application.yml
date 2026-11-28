@@ -1,3 +1,16 @@
 spring:
   application:
     name: legacy-integration
+  # Task 1.5: one datasource for this context, connecting as its own login role. The URL and the credential come
+  # from the environment (SPRING_DATASOURCE_URL and SPRING_DATASOURCE_PASSWORD; Vault from task 4.4). Startup fails
+  # fast when either is missing.
+  datasource:
+    username: legacy_integration
+  flyway:
+    # Migrations run at startup as the `legacy_integration` role, in its own schema only. The schema exists and is owned by
+    # the role (bootstrap.sql), so Flyway never creates it.
+    schemas: legacy_integration
+    default-schema: legacy_integration
+    create-schemas: false
+    locations: classpath:db/migration
+    table: flyway_schema_history

@@ -175,14 +175,104 @@ class Jackson3Only(unittest.TestCase):
                 self.assertNotIn("jackson-databind", arts)
 
 
+JAVA_SUFFIXES = {".java", ".kt", ".xml", ".yml", ".yaml", ".properties", ".sql"}
+PYTHON_SUFFIXES = {".py", ".toml", ".ini", ".cfg", ".txt", ".mako", ".yml", ".yaml"}
+SKIP_PARTS = {"target", ".venv", "node_modules", "__pycache__", ".pytest_cache", "build", "dist"}
+
+
+def _module_files(module: Path, suffixes: set[str]):
+    for path in module.rglob("*"):
+        rel = path.relative_to(module).parts
+        if path.is_file() and path.suffix.lower() in suffixes and not (set(rel) & SKIP_PARTS) \
+                and not any(p.endswith(".egg-info") for p in rel):
+            yield path
+
+
+def migration_tool_violations(root: Path) -> list[str]:
+    """Task 1.5 (ADR-003): Flyway is the Java migration tool and Alembic the Python one; neither crosses over.
+
+    A Java module is a directory with a pom.xml under services/, libs/, or platform/; a Python module is a directory
+    with a pyproject.toml there. A Java module that mentions Alembic, or a Python module that mentions Flyway, fails.
+    """
+    out = []
+    for top in ("services", "libs", "platform"):
+        base = root / top
+        if not base.is_dir():
+            continue
+        for pom in base.rglob("pom.xml"):
+            if SKIP_PARTS & set(pom.relative_to(root).parts):
+                continue
+            for f in _module_files(pom.parent, JAVA_SUFFIXES):
+                if re.search(r"(?i)alembic", f.read_text(encoding="utf-8", errors="replace")):
+                    out.append(f"Java module {pom.parent.relative_to(root).as_posix()} references Alembic in {f.relative_to(root).as_posix()}")
+        for pyproject in base.rglob("pyproject.toml"):
+            if SKIP_PARTS & set(pyproject.relative_to(root).parts):
+                continue
+            for f in _module_files(pyproject.parent, PYTHON_SUFFIXES):
+                if re.search(r"(?i)flyway", f.read_text(encoding="utf-8", errors="replace")):
+                    out.append(f"Python module {pyproject.parent.relative_to(root).as_posix()} references Flyway in {f.relative_to(root).as_posix()}")
+    return out
+
+
+class MigrationToolPerRuntime(unittest.TestCase):
+    """Task 1.5: one migration tool per runtime (Flyway for Java, Alembic for Python)."""
+
+    def test_repository_has_no_cross_runtime_migration_tool(self):
+        self.assertEqual(migration_tool_violations(REPO), [])
+
+    def test_every_java_context_with_a_schema_uses_flyway(self):
+        for ctx in ("legacy-integration", "integration-intelligence", "configuration-assurance", "release-assurance", "audit-sink"):
+            with self.subTest(context=ctx):
+                module = REPO / "services" / ctx
+                arts = {d.findtext("artifactId") for d in pom(module / "pom.xml").iter("dependency")}
+                self.assertTrue({"flyway-core", "flyway-database-postgresql", "spring-boot-starter-flyway"} <= arts)
+                self.assertTrue((module / "src/main/resources/db/migration/V1__baseline.sql").is_file())
+
+    def test_data_readiness_uses_alembic_and_the_sidecar_has_no_migrations(self):
+        dr = REPO / "services/data-readiness"
+        self.assertTrue((dr / "alembic.ini").is_file())
+        self.assertTrue((dr / "migrations/env.py").is_file())
+        deps = tomllib.loads((dr / "pyproject.toml").read_text(encoding="utf-8"))["project"]["dependencies"]
+        self.assertTrue(any(d.startswith("alembic==") for d in deps))
+        sidecar = REPO / "services/release-assurance/inference-sidecar"
+        self.assertFalse((sidecar / "alembic.ini").exists(), "the inference sidecar owns no tables")
+
+    def test_a_java_module_referencing_alembic_fails(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "services/x/src/main/resources").mkdir(parents=True)
+            (root / "services/x/pom.xml").write_text("<project/>", encoding="utf-8")
+            (root / "services/x/src/main/resources/application.yml").write_text("migrate: alembic upgrade head\n", encoding="utf-8")
+            self.assertEqual(len(migration_tool_violations(root)), 1)
+
+    def test_a_python_module_referencing_flyway_fails(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "services/y/app").mkdir(parents=True)
+            (root / "services/y/pyproject.toml").write_text("[project]\nname = 'y'\n", encoding="utf-8")
+            (root / "services/y/app/migrate.py").write_text("import subprocess\nsubprocess.run(['flyway', 'migrate'])\n", encoding="utf-8")
+            self.assertEqual(len(migration_tool_violations(root)), 1)
+
+    def test_build_outputs_are_ignored(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "services/y/.venv/lib").mkdir(parents=True)
+            (root / "services/y/pyproject.toml").write_text("[project]\nname = 'y'\n", encoding="utf-8")
+            (root / "services/y/.venv/lib/flyway_mention.py").write_text("flyway\n", encoding="utf-8")
+            self.assertEqual(migration_tool_violations(root), [])
+
+
 class BuildRunnerCoverage(unittest.TestCase):
     def setUp(self):
         self.runner = load_build_runner()
 
     def test_root_pom_lists_every_java_module(self):
         modules = {m.text for m in pom(REPO / "pom.xml").findall("modules/module")}
-        # Java modules: the bounded contexts under services/ and the platform test modules (task 1.3).
-        found = {p.parent.relative_to(REPO).as_posix() for top in ("services", "platform")
+        # Java modules: the bounded contexts under services/, the platform test modules (task 1.3), and libs (task 1.5).
+        found = {p.parent.relative_to(REPO).as_posix() for top in ("services", "platform", "libs")
                  for p in (REPO / top).rglob("pom.xml") if "target" not in p.parts}
         self.assertEqual(modules, found)
         self.assertEqual(set(self.runner.JAVA_MODULES), found)

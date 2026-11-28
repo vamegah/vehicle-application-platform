@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  configuration-assurance bounded context (task 1.1 skeleton). Java 21, Spring Boot 4.1.x. Versions come from
-  DEPENDENCIES.lock.md; artifacts without a <version> are managed by the Spring Boot parent.
+  configuration-assurance bounded context. Java 21, Spring Boot 4.1.x. Versions come from DEPENDENCIES.lock.md; artifacts without a
+  <version> are managed by the Spring Boot parent.
   Contract: contracts/openapi/configuration-assurance.yaml (health route /api/v1/configuration-assurance/health).
+  Database (task 1.5): Flyway migrations in src/main/resources/db/migration/ run at startup in the `configuration`
+  schema as the `configuration` login role (one datasource, own schema; platform/postgres/bootstrap/bootstrap.sql).
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -32,7 +34,30 @@
     </dependency>
     <dependency>
       <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-flyway</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-database-postgresql</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.autoreliance</groupId>
+      <artifactId>postgres-test-support</artifactId>
+      <version>0.1.0</version>
       <scope>test</scope>
     </dependency>
   </dependencies>
